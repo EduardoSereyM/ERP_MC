@@ -126,7 +126,7 @@ export const ClienteCombobox = ({
   const inputId = label?.toLowerCase().replace(/\s/g, '-') ?? 'cliente-combobox'
 
   return (
-    <div className="relative flex flex-col gap-1" ref={containerRef}>
+    <div className="flex flex-col gap-1" ref={containerRef}>
       {label && (
         <label htmlFor={inputId} className="text-sm font-medium text-text-primary">
           {label}
@@ -134,7 +134,7 @@ export const ClienteCombobox = ({
         </label>
       )}
 
-      {/* Input wrapper */}
+      {/* Input wrapper — relative aquí para que el dropdown se ancle a este elemento */}
       <div
         className={clsx(
           'relative flex items-center rounded-lg border text-sm transition-colors',
@@ -172,7 +172,7 @@ export const ClienteCombobox = ({
           className="flex-1 bg-transparent px-2 py-2 text-text-primary placeholder:text-text-disabled focus:outline-none"
         />
 
-        {/* Clear button — only when something is selected */}
+        {/* Clear button — solo cuando hay selección */}
         {value && (
           <button
             type="button"
@@ -196,7 +196,7 @@ export const ClienteCombobox = ({
           </button>
         )}
 
-        {/* Dropdown chevron */}
+        {/* Chevron */}
         {!value && (
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -214,49 +214,49 @@ export const ClienteCombobox = ({
             <path d="m6 9 6 6 6-6" />
           </svg>
         )}
-      </div>
 
-      {/* Dropdown */}
-      {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-[280px] max-h-60 overflow-auto rounded-lg border border-surface-border bg-white shadow-lg">
-          {isFetching ? (
-            <div className="flex items-center gap-2 px-3 py-3 text-sm text-text-secondary">
-              <svg
-                className="h-4 w-4 animate-spin text-primary"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Buscando...
-            </div>
-          ) : results.length === 0 ? (
-            <p className="px-3 py-3 text-sm text-text-disabled">
-              {debouncedQuery ? 'Sin resultados para la búsqueda' : 'Escribe para buscar clientes'}
-            </p>
-          ) : (
-            results.map((c, i) => (
-              <button
-                key={c.id}
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); handleSelect(c) }}
-                className={clsx(
-                  'w-full px-3 py-2.5 text-left text-sm transition-colors',
-                  i === activeIndex
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-text-primary hover:bg-surface-subtle',
-                  c.id === value && 'font-medium'
-                )}
-              >
-                <span className="block font-medium leading-tight">{c.razon_social}</span>
-                <span className="block text-xs text-text-secondary">{c.rut}</span>
-              </button>
-            ))
-          )}
-        </div>
-      )}
+        {/* Dropdown — anclado top-full respecto al input wrapper */}
+        {open && (
+          <div className="absolute top-full left-0 z-50 mt-1 w-full max-h-60 overflow-auto rounded-lg border border-surface-border bg-white shadow-lg">
+            {isFetching ? (
+              <div className="flex items-center gap-2 px-3 py-3 text-sm text-text-secondary">
+                <svg
+                  className="h-4 w-4 animate-spin text-primary"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Buscando...
+              </div>
+            ) : results.length === 0 ? (
+              <p className="px-3 py-3 text-sm text-text-disabled">
+                {debouncedQuery ? 'Sin resultados para la búsqueda' : 'Escribe para buscar clientes'}
+              </p>
+            ) : (
+              results.map((c, i) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); handleSelect(c) }}
+                  className={clsx(
+                    'w-full px-3 py-2.5 text-left text-sm transition-colors',
+                    i === activeIndex
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-text-primary hover:bg-surface-subtle',
+                    c.id === value && 'font-medium'
+                  )}
+                >
+                  <span className="block font-medium leading-tight">{c.razon_social}</span>
+                  <span className="block text-xs text-text-secondary">{c.rut}</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
 
       {error && <p className="text-xs text-danger-text">{error}</p>}
     </div>
