@@ -3,7 +3,6 @@ import type {
   Cotizacion,
   CotizacionCambioEstado,
   CotizacionCreate,
-  LineaCotizacion,
   LineaCotizacionCreate,
   SolicitudStub,
   StubCambioEstado,

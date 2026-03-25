@@ -28,6 +28,7 @@ export const PRODUCTOS_FAKE: ProductoListItem[] = [
     precio_base: 18900,
     unidad_medida: 'm2',
     requiere_instalacion: true,
+    servicio_instalacion_id: 'prod-fake-007',   // → SRV-INS-POR
     activo: true,
   },
   {
@@ -37,6 +38,7 @@ export const PRODUCTOS_FAKE: ProductoListItem[] = [
     precio_base: 12500,
     unidad_medida: 'm2',
     requiere_instalacion: true,
+    servicio_instalacion_id: 'prod-fake-008',   // → SRV-INS-FLO
     activo: true,
   },
   {
@@ -46,6 +48,7 @@ export const PRODUCTOS_FAKE: ProductoListItem[] = [
     precio_base: 8900,
     unidad_medida: 'm2',
     requiere_instalacion: true,
+    servicio_instalacion_id: 'prod-fake-009',   // → SRV-INS-ALF
     activo: true,
   },
 
@@ -57,6 +60,7 @@ export const PRODUCTOS_FAKE: ProductoListItem[] = [
     precio_base: 42000,
     unidad_medida: 'unidad',
     requiere_instalacion: true,
+    servicio_instalacion_id: 'prod-fake-010',   // → SRV-INS-GRF
     activo: true,
   },
   {
@@ -66,6 +70,7 @@ export const PRODUCTOS_FAKE: ProductoListItem[] = [
     precio_base: 55000,
     unidad_medida: 'unidad',
     requiere_instalacion: true,
+    servicio_instalacion_id: 'prod-fake-010',   // → SRV-INS-GRF
     activo: true,
   },
   {
@@ -75,6 +80,7 @@ export const PRODUCTOS_FAKE: ProductoListItem[] = [
     precio_base: 185000,
     unidad_medida: 'unidad',
     requiere_instalacion: true,
+    servicio_instalacion_id: 'prod-fake-010',   // → SRV-INS-GRF
     activo: true,
   },
 

@@ -46,8 +46,6 @@ export interface VentaListItem {
 
 export interface VentaCreate {
   cliente_id: string
-  fecha_cierre_esperada?: string | null
-  descuento_pct?: number
   notas?: string | null
 }
 
@@ -74,6 +72,8 @@ export interface LineaCotizacion {
   descuento_pct: number
   subtotal: number
   orden: number
+  /** Unidad de medida heredada del producto — solo frontend */
+  unidad_medida?: string
 }
 
 export interface LineaCotizacionCreate {
@@ -83,6 +83,8 @@ export interface LineaCotizacionCreate {
   precio_unitario?: number
   descuento_pct?: number
   orden?: number
+  /** Unidad de medida — se usa para display, el backend la ignora hasta Fase 1F */
+  unidad_medida?: string
 }
 
 export interface Cotizacion {
@@ -103,6 +105,10 @@ export interface Cotizacion {
   lineas: LineaCotizacion[]
   created_at: string
   updated_at: string
+  /** Descuento global sobre el subtotal — por cliente, campaña, etc. (pendiente backend) */
+  descuento_global_pct?: number
+  /** Si requiere visita de técnico para cubicación (pendiente backend) */
+  requiere_cubicacion?: boolean
 }
 
 export interface CotizacionCreate {
@@ -110,6 +116,10 @@ export interface CotizacionCreate {
   notas_internas?: string | null
   notas_cliente?: string | null
   lineas?: LineaCotizacionCreate[]
+  /** Descuento global — el backend lo ignorará hasta Fase 1F */
+  descuento_global_pct?: number
+  /** Si se requiere visita de cubicación — genera línea automática en frontend */
+  requiere_cubicacion?: boolean
 }
 
 export interface CotizacionCambioEstado {

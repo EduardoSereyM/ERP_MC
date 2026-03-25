@@ -39,6 +39,8 @@ export interface ProductoListItem {
   unidad_medida: UnidadMedida
   requiere_instalacion: boolean
   activo: boolean
+  /** ID del servicio de instalación vinculado (fake data + futuro backend) */
+  servicio_instalacion_id?: string
 }
 
 export interface ProductoCreate {

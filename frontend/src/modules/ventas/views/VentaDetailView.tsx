@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/shared/components/ui'
 import {
   useVenta, useCotizaciones, useCrearCotizacion,
   useCambiarEstadoVenta, useCambiarEstadoCotizacion,
-  useAgregarLinea, useEliminarLinea,
+  useAgregarLinea, useEliminarLinea, useActualizarVenta,
 } from '../hooks/useVentas'
+import * as ventasApi from '../api'
+import { ventasKeys } from '../queryKeys'
 import { useCliente } from '@/modules/clientes'
 import { EstadoBadge } from '../components/EstadoBadge'
 import { AnularModal } from '../components/AnularModal'
@@ -75,8 +78,12 @@ function CotizacionCard({
   const puedeEditar = cot.estado === 'BORRADOR'
   const siguientes = TRANSICIONES_COT[cot.estado as EstadoCotizacion] ?? []
 
-  const handleAgregarLinea = (data: LineaCotizacionCreate) => {
-    agregarLinea.mutate(data, { onSuccess: () => setLineaOpen(false) })
+  // Acepta 1 o 2 líneas (producto + instalación opcional)
+  const handleAgregarLinea = async (lines: LineaCotizacionCreate[]) => {
+    for (const line of lines) {
+      await agregarLinea.mutateAsync(line)
+    }
+    setLineaOpen(false)
   }
 
   return (
@@ -88,6 +95,19 @@ function CotizacionCard({
           <EstadoBadge estado={cot.estado as EstadoCotizacion} size="sm" />
           {cot.fecha_vencimiento && (
             <span className="text-xs text-text-disabled">Vence: {fmtDate(cot.fecha_vencimiento)}</span>
+          )}
+          {cot.requiere_cubicacion && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+              Cubicación
+            </span>
+          )}
+          {Number(cot.descuento_global_pct) > 0 && (
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+              -{cot.descuento_global_pct}% desc.
+            </span>
           )}
         </div>
         <span className="font-semibold text-text-primary text-sm">{fmt(cot.monto_total)}</span>
@@ -144,6 +164,12 @@ function CotizacionCard({
           <div className="flex justify-between text-sm text-text-secondary">
             <span>Subtotal</span><span className="font-mono">{fmt(cot.monto_subtotal)}</span>
           </div>
+          {Number(cot.descuento_global_pct) > 0 && (
+            <div className="flex justify-between text-sm text-emerald-700">
+              <span>Descuento global ({cot.descuento_global_pct}%)</span>
+              <span className="font-mono">-{fmt(cot.monto_subtotal * Number(cot.descuento_global_pct) / 100)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-sm text-text-secondary">
             <span>IVA (19%)</span><span className="font-mono">{fmt(cot.monto_iva)}</span>
           </div>
@@ -209,6 +235,7 @@ export const VentaDetailView = () => {
 
   const [anularOpen, setAnularOpen] = useState(false)
   const [cotizacionOpen, setCotizacionOpen] = useState(false)
+  const [editandoFecha, setEditandoFecha] = useState(false)
 
   const { data: venta, isLoading, isError } = useVenta(id)
   const { data: cotizaciones = [], isLoading: loadingCots } = useCotizaciones(id)
@@ -217,6 +244,8 @@ export const VentaDetailView = () => {
   const cambiarEstadoVenta = useCambiarEstadoVenta(id)
   const cambiarEstadoCot   = useCambiarEstadoCotizacion(id)
   const crearCotizacion    = useCrearCotizacion(id)
+  const actualizarVenta    = useActualizarVenta(id)
+  const queryClient        = useQueryClient()
 
   // ── Loading ──
   if (isLoading) {
@@ -258,8 +287,23 @@ export const VentaDetailView = () => {
     cambiarEstadoCot.mutate({ cotizacionId: cotId, payload: { estado } })
   }
 
-  const handleCrearCotizacion = (data: CotizacionCreate) => {
-    crearCotizacion.mutate(data, { onSuccess: () => setCotizacionOpen(false) })
+  const handleCrearCotizacion = async (data: CotizacionCreate) => {
+    try {
+      const newCot = await crearCotizacion.mutateAsync(data)
+      // Si requiere cubicación → auto-agregar visita técnica como línea
+      if (data.requiere_cubicacion && newCot?.id) {
+        await ventasApi.agregarLinea(newCot.id, {
+          descripcion: 'Visita técnica / Medición en obra',
+          producto_id: 'prod-fake-008',   // SRV-MED-001
+          cantidad: 1,
+          precio_unitario: 25000,
+          descuento_pct: 0,
+          unidad_medida: 'hora',
+        })
+        queryClient.invalidateQueries({ queryKey: ventasKeys.cotizaciones(id) })
+      }
+    } catch { /* errores manejados por toast en el hook */ }
+    setCotizacionOpen(false)
   }
 
   return (
@@ -368,12 +412,47 @@ export const VentaDetailView = () => {
                 <dt className="text-text-secondary">Creada</dt>
                 <dd className="text-text-primary">{fmtDate(venta.created_at)}</dd>
               </div>
-              {venta.fecha_cierre_esperada && (
-                <div className="flex justify-between gap-2">
-                  <dt className="text-text-secondary">Cierre esperado</dt>
-                  <dd className="text-text-primary">{fmtDate(venta.fecha_cierre_esperada)}</dd>
-                </div>
-              )}
+
+              {/* Fecha cierre — editable inline */}
+              <div className="flex justify-between items-center gap-2">
+                <dt className="text-text-secondary shrink-0">Cierre esperado</dt>
+                <dd className="flex items-center gap-1">
+                  {editandoFecha ? (
+                    <input
+                      type="date"
+                      autoFocus
+                      defaultValue={venta.fecha_cierre_esperada ?? ''}
+                      onBlur={e => {
+                        actualizarVenta.mutate({ fecha_cierre_esperada: e.target.value || null })
+                        setEditandoFecha(false)
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Escape') setEditandoFecha(false)
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                      }}
+                      className="text-sm border border-primary rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  ) : (
+                    <>
+                      <span className="text-text-primary text-sm">
+                        {venta.fecha_cierre_esperada ? fmtDate(venta.fecha_cierre_esperada) : '—'}
+                      </span>
+                      {venta.estado !== 'CERRADA' && venta.estado !== 'ANULADA' && (
+                        <button
+                          onClick={() => setEditandoFecha(true)}
+                          className="p-0.5 text-text-disabled hover:text-primary transition-colors rounded"
+                          title="Editar fecha de cierre"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M15.232 5.232l3.536 3.536M9 13l6.5-6.5a2 2 0 012.828 2.828L11.828 15.828a4 4 0 01-2.828 1.172H7v-2a4 4 0 011.172-2.828z" />
+                          </svg>
+                        </button>
+                      )}
+                    </>
+                  )}
+                </dd>
+              </div>
             </dl>
             {venta.notas && (
               <div className="pt-2 border-t border-surface-border">

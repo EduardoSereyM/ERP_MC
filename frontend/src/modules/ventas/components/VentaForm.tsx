@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Input, Modal, ClienteCombobox } from '@/shared/components/ui'
+import { Button, Modal, ClienteCombobox } from '@/shared/components/ui'
 import { useCrearVenta } from '@/modules/ventas'
 import { ClienteForm } from '@/modules/clientes'
 import type { Cliente } from '@/modules/clientes'
@@ -13,8 +13,6 @@ interface VentaFormProps {
 export const VentaForm = ({ onSuccess, onCancel }: VentaFormProps) => {
   const [form, setForm] = useState<VentaCreate>({
     cliente_id: '',
-    fecha_cierre_esperada: null,
-    descuento_pct: 0,
     notas: '',
   })
   const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false)
@@ -30,8 +28,6 @@ export const VentaForm = ({ onSuccess, onCancel }: VentaFormProps) => {
     try {
       await crear.mutateAsync({
         ...form,
-        descuento_pct: Number(form.descuento_pct),
-        fecha_cierre_esperada: form.fecha_cierre_esperada || null,
         notas: form.notas || null,
       })
       onSuccess()
@@ -73,25 +69,6 @@ export const VentaForm = ({ onSuccess, onCancel }: VentaFormProps) => {
           >
             + Nuevo
           </Button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="Fecha de cierre esperada"
-            type="date"
-            value={form.fecha_cierre_esperada ?? ''}
-            onChange={e => setForm(f => ({ ...f, fecha_cierre_esperada: e.target.value || null }))}
-          />
-          <Input
-            label="Descuento (%)"
-            type="number"
-            min="0"
-            max="100"
-            step="0.5"
-            value={form.descuento_pct ?? 0}
-            onChange={e => setForm(f => ({ ...f, descuento_pct: Number(e.target.value) }))}
-            hint="0 – 100%"
-          />
         </div>
 
         <div className="flex flex-col gap-1">
