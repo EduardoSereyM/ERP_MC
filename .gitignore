@@ -24,7 +24,7 @@ build/
 *.tsbuildinfo
 
 # Generated types — se regeneran con npm run generate:types
-# frontend/src/shared/generated/
+frontend/src/shared/generated/
 
 # ── Backend — Python / FastAPI ────────────────
 __pycache__/

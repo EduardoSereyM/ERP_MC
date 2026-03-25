@@ -44,6 +44,19 @@ export const ProductosListView = () => {
 
   return (
     <div className="p-8 pt-6">
+
+      {/* Banner demo */}
+      <div className="flex items-start gap-3 mb-5 px-4 py-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-800">
+        <Icon name="construction" className="text-xl mt-0.5 flex-shrink-0 text-amber-500" />
+        <div>
+          <p className="text-sm font-semibold">Módulo en construcción — datos de prueba</p>
+          <p className="text-xs mt-0.5 text-amber-700">
+            Los productos mostrados son ficticios y se usan para probar cotizaciones y líneas de venta.
+            Crear / editar / eliminar estará disponible en Fase 1F.
+          </p>
+        </div>
+      </div>
+
       <div className="mb-6">
         <h2 className="text-2xl font-semibold text-text-primary tracking-tight">Productos</h2>
         <p className="text-text-secondary font-medium mt-0.5 text-sm">
@@ -64,8 +77,9 @@ export const ProductosListView = () => {
         </div>
         <div className="flex-1" />
         <button
-          onClick={() => setModal({ mode: 'create' })}
-          className="px-5 py-2.5 bg-[#006B84] hover:bg-[#00566A] text-white font-bold rounded-lg transition-colors flex items-center gap-2 shadow-sm text-sm"
+          disabled
+          title="Disponible en Fase 1F"
+          className="px-5 py-2.5 bg-[#006B84]/40 text-white/70 font-bold rounded-lg flex items-center gap-2 shadow-sm text-sm cursor-not-allowed"
         >
           <Icon name="add" className="text-xl" />
           Nuevo producto
@@ -115,8 +129,7 @@ export const ProductosListView = () => {
                 {data?.data?.map((prod: ProductoListItem) => (
                   <tr
                     key={prod.id}
-                    onClick={() => setModal({ mode: 'edit', producto: prod })}
-                    className="hover:bg-surface-muted transition-colors cursor-pointer"
+                    className="transition-colors"
                   >
                     <td className="px-6 py-4 text-sm font-mono text-primary font-medium">{prod.codigo}</td>
                     <td className="px-6 py-4 text-sm text-text-primary font-medium">{prod.nombre}</td>

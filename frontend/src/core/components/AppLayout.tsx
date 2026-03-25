@@ -14,17 +14,17 @@ const Icon = ({ name, filled = false, className = '' }: { name: string; filled?:
 
 // ─── Nav items activos ────────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  { path: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
-  { path: '/ventas',    label: 'Ventas',    icon: 'payments'   },
-  { path: '/clientes',  label: 'Clientes',  icon: 'group'      },
-  { path: '/productos', label: 'Productos', icon: 'category'   },
-  { path: '/stubs',     label: 'Solicitudes', icon: 'task_alt' },
+  { path: '/dashboard', label: 'Dashboard',   icon: 'dashboard' },
+  { path: '/ventas',    label: 'Ventas',       icon: 'payments'  },
+  { path: '/clientes',  label: 'Clientes',     icon: 'group'     },
+  { path: '/stubs',     label: 'Solicitudes',  icon: 'task_alt'  },
 ]
 
-// ─── Nav items deshabilitados (fases futuras) ─────────────────────────────────
+// ─── Nav items deshabilitados (en construcción o fases futuras) ───────────────
 const NAV_DISABLED = [
-  { label: 'Inventario', icon: 'inventory_2' },
-  { label: 'Reportes',   icon: 'analytics'   },
+  { label: 'Productos',  icon: 'category',    badge: 'Demo'    },
+  { label: 'Inventario', icon: 'inventory_2', badge: undefined },
+  { label: 'Reportes',   icon: 'analytics',   badge: undefined },
 ]
 
 const NAV_BOTTOM_DISABLED = [
@@ -94,11 +94,16 @@ export const AppLayout = () => {
           {NAV_DISABLED.map((item) => (
             <div
               key={item.label}
-              title="Próximamente"
+              title={item.badge === 'Demo' ? 'Módulo en construcción — datos de prueba' : 'Próximamente'}
               className="flex items-center gap-3 mx-2 px-4 py-3 rounded-md text-slate-600 cursor-not-allowed text-sm"
             >
               <Icon name={item.icon} className="text-xl flex-shrink-0" />
-              <span className="tracking-wide">{item.label}</span>
+              <span className="tracking-wide flex-1">{item.label}</span>
+              {item.badge && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 uppercase tracking-wider">
+                  {item.badge}
+                </span>
+              )}
             </div>
           ))}
         </nav>
