@@ -1,0 +1,74 @@
+# ──────────────────────────────────────────────
+#  ERP_MC — .gitignore
+#  Monorepo: frontend (Vite/React) + backend (FastAPI) + supabase
+# ──────────────────────────────────────────────
+
+# ── Secretos y variables de entorno ──────────
+.env
+.env.*
+.env.local
+.env.production
+.env.staging
+# .env.example NO se ignora — es el archivo de referencia para el equipo
+!.env.example
+!**/.env.example
+
+# Archivo con credenciales antiguas
+old_supabase_conn.md
+
+# ── Frontend — Node / Vite / React ───────────
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Generated types — se regeneran con npm run generate:types
+# frontend/src/shared/generated/
+
+# ── Backend — Python / FastAPI ────────────────
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.egg
+*.egg-info/
+.venv/
+venv/
+env/
+pip-log.txt
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+
+# ── Supabase CLI ──────────────────────────────
+supabase/.temp/
+supabase/.branches/
+
+# ── Logs ──────────────────────────────────────
+*.log
+logs/
+
+# ── Sistema operativo ─────────────────────────
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ── IDEs y editores ───────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Claude Code (configuración local del IDE) ─
+.claude/

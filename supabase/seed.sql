@@ -1,0 +1,13 @@
+-- =============================================================================
+-- Seed inicial — ERP MC
+-- Ejecutar después de aplicar todas las migraciones base.
+-- Las secuencias ya se seedean en la migración 0002.
+-- =============================================================================
+
+-- Para crear el primer usuario admin:
+-- 1. Crear el usuario en Supabase Dashboard (Authentication → Users)
+-- 2. Ejecutar la siguiente query para asignarle rol admin:
+--
+-- UPDATE public.usuarios
+-- SET rol_funcional = 'admin', nivel_jerarquico = 'director'
+-- WHERE email = 'admin@tu-empresa.cl';

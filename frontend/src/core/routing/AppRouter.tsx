@@ -1,0 +1,51 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { ProtectedRoute } from './ProtectedRoute'
+import { AppLayout } from '@/core/components/AppLayout'
+import { LoginView } from '@/modules/auth/views/LoginView'
+import { DashboardView } from '@/modules/dashboard/views/DashboardView'
+import { ClientesListView } from '@/modules/clientes/views/ClientesListView'
+import { ProductosListView } from '@/modules/productos/views/ProductosListView'
+import { VentasListView } from '@/modules/ventas/views/VentasListView'
+import { StubsListView } from '@/modules/ventas/views/StubsListView'
+import { VentaDetailView } from '@/modules/ventas/views/VentaDetailView'
+
+const UnauthorizedView = () => (
+  <div className="flex items-center justify-center h-screen bg-surface-muted">
+    <div className="text-center">
+      <p className="text-2xl font-semibold text-text-primary">Sin permiso</p>
+      <p className="text-text-secondary mt-2">No tienes acceso a esta sección.</p>
+    </div>
+  </div>
+)
+
+export const AppRouter = () => {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Públicas */}
+        <Route path="/login" element={<LoginView />} />
+        <Route path="/sin-permiso" element={<UnauthorizedView />} />
+
+        {/* Protegidas — con Layout */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/dashboard" element={<DashboardView />} />
+          <Route path="/clientes" element={<ClientesListView />} />
+          <Route path="/productos" element={<ProductosListView />} />
+          <Route path="/ventas" element={<VentasListView />} />
+          <Route path="/ventas/:id" element={<VentaDetailView />} />
+          <Route path="/stubs" element={<StubsListView />} />
+        </Route>
+
+        {/* Redirecciones */}
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </BrowserRouter>
+  )
+}

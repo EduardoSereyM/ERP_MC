@@ -1,0 +1,29 @@
+name: CI Arquitectura
+
+on:
+  push:
+    paths: ['frontend/src/modules/**', 'backend/app/modules/**']
+  pull_request:
+    paths: ['frontend/src/modules/**', 'backend/app/modules/**']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validar arquitectura espejo
+        run: bash backend/scripts/validate_mirror.sh
+
+      - name: Validar SCHEMA_MAP
+        run: python backend/scripts/validate_schema_registry.py

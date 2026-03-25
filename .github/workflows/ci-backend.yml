@@ -1,0 +1,41 @@
+name: CI Backend
+
+on:
+  push:
+    paths: ['backend/**']
+  pull_request:
+    paths: ['backend/**']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: |
+          cd backend
+          pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: cd backend && ruff check .
+
+      - name: Type check
+        run: cd backend && ruff check --select=PYI .
+
+      - name: Tests (pytest)
+        run: cd backend && pytest --tb=short
+
+      - name: Escaneo de dependencias
+        run: cd backend && pip-audit
