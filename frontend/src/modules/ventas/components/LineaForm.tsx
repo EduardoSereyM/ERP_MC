@@ -290,16 +290,9 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
             />
           </div>
 
-          {/* Descuento con monto */}
+          {/* Descuento */}
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-text-primary">
-              Descuento (%)
-              {Number(form.descuento_pct) > 0 && (
-                <span className="ml-1.5 text-xs font-normal text-emerald-600">
-                  −{fmt(Number(form.cantidad) * Number(form.precio_unitario) * Number(form.descuento_pct) / 100)}
-                </span>
-              )}
-            </label>
+            <label className="text-sm font-medium text-text-primary">Descuento (%)</label>
             <input
               type="number"
               min="0"
@@ -313,26 +306,50 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
         </div>
 
         {/* ── Subtotal preview ── */}
-        <div className="rounded-lg bg-surface-muted px-4 py-3 space-y-1.5">
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-text-secondary">
-              {selectedProd ? selectedProd.nombre : 'Esta línea'}
-            </span>
-            <span className="font-semibold font-mono text-text-primary">{fmt(subtotal)}</span>
-          </div>
-          {incluirInstalacion && servicioVinculado && (
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-text-secondary">{servicioVinculado.nombre}</span>
-              <span className="font-semibold font-mono text-text-primary">{fmt(subtotalInstalacion)}</span>
+        {(() => {
+          const bruto = Number(form.cantidad) * Number(form.precio_unitario)
+          const montoDescuento = bruto * Number(form.descuento_pct) / 100
+          const hayDescuento = montoDescuento > 0
+          return (
+            <div className="rounded-lg bg-surface-muted px-4 py-3 space-y-1.5">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-text-secondary">
+                  {selectedProd ? selectedProd.nombre : 'Esta línea'}
+                </span>
+                <span className={`font-mono ${hayDescuento ? 'text-text-disabled line-through text-xs' : 'font-semibold text-text-primary'}`}>
+                  {fmt(bruto)}
+                </span>
+              </div>
+
+              {hayDescuento && (
+                <>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-emerald-600">Descuento ({form.descuento_pct}%)</span>
+                    <span className="font-mono text-emerald-600">−{fmt(montoDescuento)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-text-secondary font-medium">Neto</span>
+                    <span className="font-semibold font-mono text-text-primary">{fmt(subtotal)}</span>
+                  </div>
+                </>
+              )}
+
+              {incluirInstalacion && servicioVinculado && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-text-secondary">{servicioVinculado.nombre}</span>
+                  <span className="font-semibold font-mono text-text-primary">{fmt(subtotalInstalacion)}</span>
+                </div>
+              )}
+
+              {(incluirInstalacion && servicioVinculado) && (
+                <div className="flex justify-between items-center text-sm pt-1.5 border-t border-surface-border">
+                  <span className="text-text-secondary font-medium">Total a agregar</span>
+                  <span className="font-bold font-mono text-text-primary">{fmt(subtotal + subtotalInstalacion)}</span>
+                </div>
+              )}
             </div>
-          )}
-          {incluirInstalacion && servicioVinculado && (
-            <div className="flex justify-between items-center text-sm pt-1.5 border-t border-surface-border">
-              <span className="text-text-secondary font-medium">Total a agregar</span>
-              <span className="font-bold font-mono text-text-primary">{fmt(subtotal + subtotalInstalacion)}</span>
-            </div>
-          )}
-        </div>
+          )
+        })()}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
