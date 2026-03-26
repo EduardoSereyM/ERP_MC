@@ -295,7 +295,7 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
             <label className="text-sm font-medium text-text-primary">
               Descuento (%)
               {Number(form.descuento_pct) > 0 && (
-                <span className="ml-1.5 text-xs font-normal text-danger-text">
+                <span className="ml-1.5 text-xs font-normal text-emerald-600">
                   −{fmt(Number(form.cantidad) * Number(form.precio_unitario) * Number(form.descuento_pct) / 100)}
                 </span>
               )}
