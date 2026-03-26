@@ -5,6 +5,7 @@ import { VentaForm } from '../components/VentaForm'
 import { Modal, Badge } from '@/shared/components/ui'
 import { ESTADO_VENTA_LABEL } from '../types'
 import type { VentaListItem, EstadoVenta } from '../types'
+import { useMe } from '@/modules/auth/hooks/useMe'
 
 // ─── Icono inline (usa la clase global de Material Symbols) ──────────────────
 const Icon = ({ name, className = '' }: { name: string; className?: string }) => (
@@ -182,12 +183,17 @@ export const VentasListView = () => {
   const [page, setPage] = useState(1)
   const [modalOpen, setModalOpen] = useState(false)
 
+  const { data: me } = useMe()
+  const esVendedor = me?.rol_funcional === 'vendedor'
+
   const { data, isLoading, isError, refetch } = useVentas({
     estado: estado || undefined,
     busqueda: busqueda || undefined,
     page,
     limit: 20,
     direccion: 'desc',
+    // Los vendedores solo ven sus propias ventas
+    vendedor_id: esVendedor ? me?.id : undefined,
   })
 
   const total = data?.meta?.total ?? 0
@@ -198,7 +204,14 @@ export const VentasListView = () => {
 
       {/* Header */}
       <div className="mb-6">
-        <h2 className="text-2xl font-semibold text-text-primary tracking-tight">Ventas</h2>
+        <h2 className="text-2xl font-semibold text-text-primary tracking-tight">
+          Ventas
+          {esVendedor && (
+            <span className="ml-3 text-sm font-medium text-primary bg-primary/10 px-2.5 py-1 rounded-full align-middle">
+              Mis ventas
+            </span>
+          )}
+        </h2>
         <p className="text-text-secondary font-medium mt-0.5 text-sm">
           {total} {total === 1 ? 'venta en total' : 'ventas en total'}
         </p>

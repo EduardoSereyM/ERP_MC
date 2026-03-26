@@ -3,6 +3,7 @@ import { Button, Input, Modal } from '@/shared/components/ui'
 import { useProductos, PRODUCTOS_FAKE_MODE } from '@/modules/productos'
 import type { ProductoListItem } from '@/modules/productos'
 import type { LineaCotizacion, LineaCotizacionCreate } from '../types'
+import { ProductoCombobox } from './ProductoCombobox'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -24,9 +25,6 @@ const UNIDAD_LABEL: Record<string, string> = {
   m2: 'm²', ml: 'ml', unidad: 'unid.', kg: 'kg', hora: 'hr', otro: '',
 }
 
-/** Distingue servicios de productos físicos (por prefijo de código en fake data) */
-const esServicio = (p: ProductoListItem) => p.codigo.startsWith('SRV-')
-
 const EMPTY: LineaCotizacionCreate = {
   descripcion: '',
   cantidad: 1,
@@ -39,15 +37,11 @@ const EMPTY: LineaCotizacionCreate = {
 
 export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: LineaFormProps) => {
   const [form, setForm] = useState<LineaCotizacionCreate>(EMPTY)
+  const [selectedProd, setSelectedProd] = useState<ProductoListItem | null>(null)
   const [incluirInstalacion, setIncluirInstalacion] = useState(false)
 
   const { data: productosData } = useProductos({ limit: 200, activo: true })
   const todos = productosData?.data ?? []
-  const productos = todos.filter(p => !esServicio(p))
-  const servicios  = todos.filter(p => esServicio(p))
-
-  // Producto seleccionado actualmente
-  const selectedProd = form.producto_id ? todos.find(p => p.id === form.producto_id) : null
 
   // Servicio de instalación vinculado al producto seleccionado
   const servicioVinculado: ProductoListItem | null =
@@ -66,30 +60,31 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
         producto_id: initial.producto_id,
         unidad_medida: initial.unidad_medida,
       })
+      // En edición, intentar restaurar el ProductoListItem si hay producto_id
+      const prod = initial.producto_id ? (todos.find(p => p.id === initial.producto_id) ?? null) : null
+      setSelectedProd(prod)
     } else {
       setForm(EMPTY)
+      setSelectedProd(null)
     }
     setIncluirInstalacion(false)
-  }, [initial, open])
+  }, [initial, open])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Seleccionar producto → auto-rellenar campos
-  const handleProductoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const pid = e.target.value
+  // Seleccionar producto desde combobox → auto-rellenar campos
+  const handleProductoChange = (prod: ProductoListItem | null) => {
+    setSelectedProd(prod)
     setIncluirInstalacion(false)
-    if (!pid) {
+    if (!prod) {
       setForm(f => ({ ...f, producto_id: null, descripcion: '', precio_unitario: 0, unidad_medida: undefined }))
       return
     }
-    const prod = todos.find(p => p.id === pid)
-    if (prod) {
-      setForm(f => ({
-        ...f,
-        producto_id: pid,
-        descripcion: prod.nombre,
-        precio_unitario: Number(prod.precio_base ?? 0),
-        unidad_medida: prod.unidad_medida,
-      }))
-    }
+    setForm(f => ({
+      ...f,
+      producto_id: prod.id,
+      descripcion: prod.nombre,
+      precio_unitario: Number(prod.precio_base ?? 0),
+      unidad_medida: prod.unidad_medida,
+    }))
   }
 
   const subtotal = Number(form.cantidad) * Number(form.precio_unitario) * (1 - Number(form.descuento_pct) / 100)
@@ -136,39 +131,12 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
     <Modal open={open} onClose={onClose} title={initial ? 'Editar línea' : 'Agregar línea'} size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
 
-        {/* ── Selector agrupado Productos / Servicios ── */}
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-text-primary">
-            Producto o servicio <span className="text-text-disabled font-normal">(opcional)</span>
-          </label>
-          <select
-            value={form.producto_id ?? ''}
-            onChange={handleProductoChange}
-            className="rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="">— Línea libre (sin producto vinculado) —</option>
-
-            {productos.length > 0 && (
-              <optgroup label="PRODUCTOS">
-                {productos.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.codigo} — {p.nombre}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-
-            {servicios.length > 0 && (
-              <optgroup label="SERVICIOS DE INSTALACIÓN">
-                {servicios.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.codigo} — {p.nombre}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-        </div>
+        {/* ── Buscador de productos / servicios ── */}
+        <ProductoCombobox
+          label="Producto o servicio"
+          value={selectedProd}
+          onChange={handleProductoChange}
+        />
 
         {/* ── Advertencia instalación ── */}
         {selectedProd?.requiere_instalacion && (

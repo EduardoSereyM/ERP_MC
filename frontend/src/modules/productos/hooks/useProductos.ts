@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as productosApi from '../api'
 import { productosKeys } from '../queryKeys'
 import type { ProductoCreate, ProductoUpdate } from '../types'
-import { useToast } from '@/shared/context'
+import { useToast } from '@/shared/hooks/useToast'
 
 export function useCategorias(modulo: string, tipo?: string) {
   return useQuery({

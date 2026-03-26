@@ -12,7 +12,7 @@ import type {
   VentaUpdate,
 } from '../types'
 import type { LineaCotizacionUpdate } from '../api'
-import { useToast } from '@/shared/context'
+import { useToast } from '@/shared/hooks/useToast'
 
 // ─── Ventas ───────────────────────────────────────────────────────────────────
 

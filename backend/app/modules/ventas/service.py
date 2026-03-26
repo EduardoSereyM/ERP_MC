@@ -337,6 +337,12 @@ def crear_stub(db: Session, data: StubCreate, user_id: UUID) -> SolicitudStub:
     return stub
 
 
+def obtener_stub(db: Session, stub_id: UUID) -> SolicitudStub | None:
+    return db.execute(
+        select(SolicitudStub).where(SolicitudStub.id == stub_id, SolicitudStub.is_deleted == False)
+    ).scalar_one_or_none()
+
+
 def cambiar_estado_stub(db: Session, stub: SolicitudStub, nuevo_estado: str, user_id: UUID, respuesta: str | None = None) -> SolicitudStub:
     _validar_transicion(stub.estado, nuevo_estado, TRANSICIONES_STUB, "stub")
     stub.estado = nuevo_estado

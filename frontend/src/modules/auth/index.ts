@@ -1,5 +1,7 @@
 export { LoginView } from './views/LoginView'
 export { LoginForm } from './components/LoginForm'
+export { ProtectedRoute } from './components/ProtectedRoute'
 export { useAuth } from './hooks/useAuth'
 export { useSession } from './hooks/useSession'
+export { useMe } from './hooks/useMe'
 export type { Usuario, RolFuncional, NivelJerarquico, LoginPayload } from './types'

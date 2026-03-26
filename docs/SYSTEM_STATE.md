@@ -1,6 +1,6 @@
 # SYSTEM_STATE.md — ERP MC
 
-> Última actualización: 2026-03-25
+> Última actualización: 2026-03-26
 > Fase actual: **1A — Ventas** (data layer + backend + frontend — app en funcionamiento con formularios y búsqueda)
 
 ---
@@ -34,15 +34,17 @@
 
 ### 2.1 Auth (`auth`)
 
-| Endpoint | Método | Rate limit | Descripción |
-|----------|--------|------------|-------------|
-| `/api/v1/auth/me` | GET | 60/min | Perfil del usuario autenticado |
-| `/api/v1/auth/logout` | POST | 10/min | Cierre de sesión + log auditoría |
+| Endpoint | Método | Rate limit | Roles | Descripción |
+|----------|--------|------------|-------|-------------|
+| `/api/v1/auth/login` | POST | 10/min | Público | Login email+password → devuelve access + refresh token |
+| `/api/v1/auth/refresh` | POST | 30/min | Público | Refresca sesión con refresh_token |
+| `/api/v1/auth/me` | GET | 60/min | Autenticado | Perfil del usuario autenticado |
+| `/api/v1/auth/logout` | POST | 10/min | Autenticado | Cierre de sesión + log auditoría |
 
-**Frontend:** Login con email/password vía `supabase.auth.signInWithPassword()`, hook `useSession()` con TanStack Query para `/auth/me`, `ProtectedRoute` con doble validación (rol_funcional + nivel_jerarquico).
+**Frontend:** Login con email/password vía `supabase.auth.signInWithPassword()`, hook `useSession()` / `useMe()` con TanStack Query para `/auth/me`, `ProtectedRoute` (en `modules/auth/components/`) con doble validación (rol_funcional + nivel_jerarquico).
 
 **Lógica de negocio:**
-- Login es client-side directo a Supabase Auth
+- Login proxiado por FastAPI (`/auth/login`) — no directo a Supabase desde frontend (excepto sesión supabase-js para refresh)
 - Backend valida JWT (ECC P-256 vía JWKS, fallback HS256 legacy) y devuelve perfil desde `public.usuarios`
 - `handle_new_user()` trigger crea entrada en `public.usuarios` con defaults (vendedor/usuario)
 - JWKS URL correcta: `{SUPABASE_URL}/auth/v1/.well-known/jwks.json`
@@ -108,6 +110,8 @@
 | `/api/v1/ventas/cotizaciones/{id}/lineas` | POST | 60/min | vendedor, admin, gerencia |
 | `/api/v1/ventas/cotizaciones/{id}/lineas/{linea_id}` | PATCH | 60/min | vendedor, admin, gerencia |
 | `/api/v1/ventas/cotizaciones/{id}/lineas/{linea_id}` | DELETE | 60/min | vendedor, admin, gerencia |
+| `/api/v1/ventas/cotizaciones/{id}/enviar-email` | POST | 10/min | vendedor, admin, gerencia |
+| `/api/v1/ventas/cotizaciones/{id}/pdf` | GET | 30/min | vendedor, admin, gerencia |
 
 **Máquina de estados VTA:**
 ```
@@ -137,10 +141,40 @@ BORRADOR → ENVIADA → ACEPTADA
 - Al anular: se registra `fecha_anulacion` + `motivo_anulacion`
 - Descuento 0–100% con CHECK constraint en DB
 - **Búsqueda** (`busqueda` query param): filtra por `codigo` ILIKE, RUT de cliente (subquery), o código de cotización (subquery)
+- **Envío email** (`/enviar-email`): envía HTML por SMTP SSL (port 465) y registra en audit_log
+- **PDF** (`/pdf`): genera PDF con fpdf2 (puro Python) — usa `_build_cotizacion_data()` compartido con email
+- **Auto-transición al enviar**: enviar email/PDF en BORRADOR → auto-marca cotización ENVIADA + venta COTIZACION_ENVIADA
+- **VENCIDA** se gestiona automáticamente por fecha — no se expone como botón manual en UI
+- **Cotización ENVIADA es inmutable** — solo BORRADOR permite editar/agregar líneas
+
+**Decisiones de diseño pendientes:**
+- ¿Se permiten múltiples cotizaciones activas simultáneas?
+- ¿Monto total muestra solo aceptadas o todas activas?
+- ¿Se permite más de una cotización aceptada por venta?
 
 ---
 
-### 2.5 Stubs (`stubs`)
+### 2.5 Dashboard (`dashboard`)
+
+| Endpoint | Método | Rate limit | Roles | Descripción |
+|----------|--------|------------|-------|-------------|
+| `/api/v1/dashboard/summary` | GET | 60/min | Autenticado | Resumen KPIs: ventas activas, cotizaciones, clientes, stubs pendientes |
+
+**Frontend:** `DashboardView` con métricas agregadas. hooks `useDashboardSummary`. Módulo en `frontend/src/modules/dashboard/`.
+
+---
+
+### 2.6 Logs de auditoría (`logs`)
+
+| Endpoint | Método | Rate limit | Roles | Descripción |
+|----------|--------|------------|-------|-------------|
+| `/api/v1/admin/audit-logs` | GET | 30/min | nivel ≥ gerencia | Lista paginada de audit_logs con filtros por action, entity_type, user_id |
+
+**Frontend:** `AuditLogsView` en `frontend/src/modules/logs/`. Acceso restringido al menú según nivel jerárquico.
+
+---
+
+### 2.7 Stubs (`stubs`)
 
 | Endpoint | Método | Rate limit | Roles permitidos |
 |----------|--------|------------|-----------------|
@@ -231,11 +265,20 @@ PENDIENTE → EN_REVISION → COMPLETADA
 - `require_rol()` — dependency factory para restringir endpoints por rol
 - `require_nivel_minimo()` — dependency factory para mínimo jerárquico
 - RLS habilitado en todas las tablas
+- **Roles funcionales:** `vendedor | coordinador_instalaciones | admin | gerencia`
+- **Niveles jerárquicos** (orden ascendente): `usuario → supervisor → jefatura → gerencia → director`
 
 ### 4.3 Rate limiting
-- Auth: 5-10/min
-- Lectura: 60/min
-- Escritura: 30/min
+
+| Categoría | Límite |
+|-----------|--------|
+| Auth login / logout | 10/min |
+| Auth refresh | 30/min |
+| Auth me | 60/min |
+| Lectura general | 60/min |
+| Escritura general | 30/min |
+| Admin (audit-logs) | 30/min |
+| Email cotización | 10/min |
 
 ### 4.4 Validación
 - RUT chileno validado con algoritmo Módulo 11 (backend + frontend)
@@ -248,10 +291,12 @@ PENDIENTE → EN_REVISION → COMPLETADA
 
 | Archivo | Descripción |
 |---------|-------------|
-| `backend/app/shared/rut.py` | Validador RUT Módulo 11: `validar_rut()`, `normalizar_rut()`, `validar_rut_o_error()` |
+| `backend/app/shared/rut.py` | Validador RUT Módulo 11: `validar_rut()`, `normalizar_rut()`, `validar_rut_o_error()` — rechaza cuerpo todo ceros |
 | `backend/app/shared/secuencias.py` | Helper para `siguiente_codigo()` — delega a función SQL |
 | `backend/app/shared/pagination.py` | `PaginacionParams` (page, limit, orden, direccion) |
 | `backend/app/shared/responses.py` | `RespuestaSimple[T]`, `RespuestaPaginada[T]`, `MetaPaginacion`, `make_paginacion_meta(total, params)` |
+| `backend/app/shared/email.py` | `enviar_cotizacion()` + `_build_cotizacion_html()` — SMTP SSL port 465 |
+| `backend/app/shared/pdf.py` | `generar_cotizacion_pdf()` — fpdf2, Latin-1 safe con `_safe()`, misma estructura que email |
 | `frontend/src/shared/utils/rut.ts` | `validarRut()`, `normalizarRut()`, `formatearRut()`, `formatearRutInput()` |
 
 ---
@@ -260,16 +305,21 @@ PENDIENTE → EN_REVISION → COMPLETADA
 
 | Módulo | Data layer (types/hooks/api) | Views/Components | Rutas |
 |--------|------------------------------|------------------|-------|
-| auth | ✅ | ✅ LoginView, LoginForm | `/login` |
+| auth | ✅ `useMe`, `useSession` | ✅ LoginView, LoginForm, ProtectedRoute | `/login` |
 | clientes | ✅ | ✅ ClientesListView, ClienteForm (crear/editar + validación RUT) | `/clientes` |
 | productos | ✅ | ✅ ProductosListView, ProductoForm (crear/editar) | `/productos` |
-| ventas | ✅ | ✅ VentasListView (búsqueda), VentaForm (modal + nuevo cliente), VentaDetailView (cotizaciones + líneas + transiciones de estado) | `/ventas`, `/ventas/:id` |
+| ventas | ✅ | ✅ VentasListView (búsqueda), VentaForm (modal + nuevo cliente), VentaDetailView (cotizaciones + líneas + PDF + transiciones) | `/ventas`, `/ventas/:id` |
 | stubs | ✅ | ✅ StubsListView (filtro por tipo, paginación) | `/stubs` |
-| dashboard | — | ✅ DashboardView (placeholder) | `/dashboard` |
+| dashboard | ✅ `useDashboardSummary` | ✅ DashboardView con KPIs reales | `/dashboard` |
+| logs | ✅ `useLogs` | ✅ AuditLogsView (paginada, filtros) | `/admin/audit-logs` |
 
-**Layout:** `AppLayout` con sidebar colapsable (navy), navegación principal, sección de usuario y botón cerrar sesión. Rutas protegidas con `ProtectedRoute`.
+**Layout:** `AppLayout` con sidebar colapsable (navy), navegación principal, sección de usuario y botón cerrar sesión. Rutas protegidas con `ProtectedRoute` (en `modules/auth/components/`).
 
-**Componentes UI reutilizables:** `Button` (variant/size/loading), `Input` (label/error/hint), `Modal` (sm/md/lg, ESC para cerrar, backdrop click).
+**Store Zustand:** `sidebarSlice` (colapso sidebar), `themeSlice` (tema UI), `toastSlice` (notificaciones toast globales).
+
+**Componentes UI reutilizables:** `Button` (variant/size/loading), `Input` (label/error/hint), `Modal` (sm/md/lg, ESC para cerrar, backdrop click), `PhoneInput` (prefijo +56), `ChileLocationSelect` (región/ciudad/comuna), `Toaster` (toast via hook `useToast`), `EmptyState`, `Badge`.
+
+**Permisos frontend:** `core/permisos.ts` + `usePermisos()` — controla visibilidad de campos protegidos (ej: RUT solo editable por jefatura+).
 
 ---
 
@@ -297,6 +347,11 @@ PENDIENTE → EN_REVISION → COMPLETADA
 | Supabase usa JWT ECC P-256, backend solo soportaba HS256 | `security.py` intenta JWKS primero, fallback HS256 |
 | `UsuarioResponse.id` esperaba `str`, recibía `UUID` | Agregar `field_serializer` para `id` en schema |
 | `make_paginacion_meta()` llamado con un solo argumento | Firma corregida a `make_paginacion_meta(total, params)` |
+| `validar_rut('00000000-0')` retornaba `True` | Agregado chequeo `int(cuerpo) == 0` en `validar_rut()` |
+| Test data `12345678-9` era inválida (DV real = 5) | Corregida a `12345678-5` en `test_rut.py` |
+| `esServicio` declarado pero no usado en `LineaForm.tsx` | Eliminado |
+| `useActualizarCliente` usaba `setQueriesData` con spread que no propagaba cambios al refetch | Simplificado a `setQueryData(detail)` + `invalidateQueries(all)` |
+| `fpdf2` lanzaba `FPDFUnicodeEncodingException` con carácter "—" en Helvetica | Agregado `_safe()` que convierte caracteres fuera de Latin-1; `"—"` → `"-"` |
 
 ---
 
@@ -304,7 +359,9 @@ PENDIENTE → EN_REVISION → COMPLETADA
 
 | Item | Fase |
 |------|------|
-| Formulario editar cliente desde listado | 1A |
+| Política múltiples cotizaciones activas + monto total separado aceptadas/activas | 1A |
+| Auto-vencimiento cotizaciones por `fecha_vencimiento` (job o check on-read) | 1A |
+| Confirmar venta solo con cotización aceptada (guard en transición) | 1A |
 | Notificaciones de VTA + Stubs | 1A |
 | Backlog/historial lateral de VTA | 1A |
 | SAC / Instalaciones | 1B |

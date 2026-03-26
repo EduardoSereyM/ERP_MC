@@ -1,6 +1,9 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useSession } from '@/modules/auth/hooks/useSession'
 import { useAuth } from '@/modules/auth/hooks/useAuth'
+import { usePermisos } from '@/core/hooks/usePermisos'
+import type { ModuloId } from '@/core/permisos'
+import type { RolFuncional } from '@/modules/auth/types'
 
 // ─── Íconos Material Symbols ─────────────────────────────────────────────────
 const Icon = ({ name, filled = false, className = '' }: { name: string; filled?: boolean; className?: string }) => (
@@ -12,12 +15,33 @@ const Icon = ({ name, filled = false, className = '' }: { name: string; filled?:
   </span>
 )
 
-// ─── Nav items activos ────────────────────────────────────────────────────────
-const NAV_ITEMS = [
-  { path: '/dashboard', label: 'Dashboard',   icon: 'dashboard' },
-  { path: '/ventas',    label: 'Ventas',       icon: 'payments'  },
-  { path: '/clientes',  label: 'Clientes',     icon: 'group'     },
-  { path: '/stubs',     label: 'Solicitudes',  icon: 'task_alt'  },
+// ─── Etiqueta legible del rol ─────────────────────────────────────────────────
+const ROL_LABEL: Record<RolFuncional, string> = {
+  vendedor:                  'Vendedor',
+  coordinador_instalaciones: 'Coord. Instalaciones',
+  supervisor_instalaciones:  'Supervisor Instalaciones',
+  instalador:                'Instalador',
+  postventa:                 'Postventa',
+  bodega:                    'Bodega',
+  contabilidad:              'Contabilidad',
+  cobranza:                  'Cobranza',
+  gerencia:                  'Gerencia',
+  admin:                     'Administrador',
+}
+
+// ─── Nav items vinculados a la matriz de permisos ─────────────────────────────
+interface NavItemDef {
+  path: string
+  label: string
+  icon: string
+  modulo?: ModuloId   // si está definido, se filtra según puedeAcceder()
+}
+
+const NAV_ITEMS: NavItemDef[] = [
+  { path: '/dashboard', label: 'Dashboard',  icon: 'dashboard', modulo: 'dashboard'    },
+  { path: '/ventas',    label: 'Ventas',      icon: 'payments',  modulo: 'ventas'       },
+  { path: '/clientes',  label: 'Clientes',    icon: 'group',     modulo: 'clientes'     },
+  { path: '/stubs',     label: 'Solicitudes', icon: 'task_alt',  modulo: 'solicitudes'  },
 ]
 
 // ─── Nav items deshabilitados (en construcción o fases futuras) ───────────────
@@ -45,8 +69,14 @@ export const AppLayout = () => {
   const { usuario } = useSession()
   const { cerrarSesion } = useAuth()
   const location = useLocation()
+  const permisos = usePermisos()
 
   const initials = usuario ? getInitials(usuario.nombre) : '?'
+
+  // Filtrar items de nav según la matriz de permisos
+  const navItems = NAV_ITEMS.filter(item =>
+    !item.modulo || permisos.puedeAcceder(item.modulo)
+  )
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-muted">
@@ -69,7 +99,7 @@ export const AppLayout = () => {
 
         {/* Navigation activa */}
         <nav className="flex-1 mt-2 space-y-0.5">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const isActive = location.pathname.startsWith(item.path)
             return (
               <Link
@@ -148,6 +178,9 @@ export const AppLayout = () => {
               <div className="flex flex-col items-end">
                 <span className="text-xs font-bold text-text-primary leading-tight">
                   {usuario?.nombre ?? ''}
+                </span>
+                <span className="text-[10px] text-text-secondary leading-tight">
+                  {usuario ? ROL_LABEL[usuario.rol_funcional] : ''}
                 </span>
                 <button
                   onClick={cerrarSesion}

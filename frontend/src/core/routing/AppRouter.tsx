@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { ProtectedRoute } from './ProtectedRoute'
+import { ProtectedRoute } from '@/modules/auth/components/ProtectedRoute'
 import { AppLayout } from '@/core/components/AppLayout'
 import { LoginView } from '@/modules/auth/views/LoginView'
 import { DashboardView } from '@/modules/dashboard/views/DashboardView'
@@ -8,6 +8,7 @@ import { ProductosListView } from '@/modules/productos/views/ProductosListView'
 import { VentasListView } from '@/modules/ventas/views/VentasListView'
 import { StubsListView } from '@/modules/ventas/views/StubsListView'
 import { VentaDetailView } from '@/modules/ventas/views/VentaDetailView'
+import { AuditLogsView } from '@/modules/logs/views/AuditLogsView'
 
 const UnauthorizedView = () => (
   <div className="flex items-center justify-center h-screen bg-surface-muted">
@@ -26,7 +27,7 @@ export const AppRouter = () => {
         <Route path="/login" element={<LoginView />} />
         <Route path="/sin-permiso" element={<UnauthorizedView />} />
 
-        {/* Protegidas — con Layout */}
+        {/* Protegidas — requieren sesión activa + Layout */}
         <Route
           element={
             <ProtectedRoute>
@@ -34,12 +35,73 @@ export const AppRouter = () => {
             </ProtectedRoute>
           }
         >
-          <Route path="/dashboard" element={<DashboardView />} />
-          <Route path="/clientes" element={<ClientesListView />} />
-          <Route path="/productos" element={<ProductosListView />} />
-          <Route path="/ventas" element={<VentasListView />} />
-          <Route path="/ventas/:id" element={<VentaDetailView />} />
-          <Route path="/stubs" element={<StubsListView />} />
+          {/* Dashboard — todos los roles */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute requiredModulo="dashboard">
+                <DashboardView />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Clientes */}
+          <Route
+            path="/clientes"
+            element={
+              <ProtectedRoute requiredModulo="clientes">
+                <ClientesListView />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Productos (demo) */}
+          <Route
+            path="/productos"
+            element={
+              <ProtectedRoute requiredModulo="productos">
+                <ProductosListView />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Ventas */}
+          <Route
+            path="/ventas"
+            element={
+              <ProtectedRoute requiredModulo="ventas">
+                <VentasListView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ventas/:id"
+            element={
+              <ProtectedRoute requiredModulo="ventas">
+                <VentaDetailView />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Solicitudes */}
+          <Route
+            path="/stubs"
+            element={
+              <ProtectedRoute requiredModulo="solicitudes">
+                <StubsListView />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Auditoría — solo gerencia/admin */}
+          <Route
+            path="/admin/audit-logs"
+            element={
+              <ProtectedRoute requiredModulo="logs">
+                <AuditLogsView />
+              </ProtectedRoute>
+            }
+          />
         </Route>
 
         {/* Redirecciones */}

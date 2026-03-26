@@ -1,18 +1,22 @@
 import { Navigate } from 'react-router-dom'
 import { useSession } from '@/modules/auth/hooks/useSession'
-import type { RolFuncional, NivelJerarquico } from '@/modules/auth/types'
+import { puedeAcceder } from '@/core/permisos'
+import type { ModuloId } from '@/core/permisos'
+import type { NivelJerarquico } from '@/modules/auth/types'
 
 const JERARQUIA: NivelJerarquico[] = ['usuario', 'supervisor', 'jefatura', 'gerencia', 'director']
 
 interface ProtectedRouteProps {
   children: React.ReactNode
-  requiredRol?: RolFuncional | RolFuncional[]
+  /** Protege por módulo usando la matriz de permisos centralizada */
+  requiredModulo?: ModuloId
+  /** Protege por nivel jerárquico mínimo (opcional, además del módulo) */
   requiredNivelMinimo?: NivelJerarquico
 }
 
 export const ProtectedRoute = ({
   children,
-  requiredRol,
+  requiredModulo,
   requiredNivelMinimo,
 }: ProtectedRouteProps) => {
   const { session, usuario, isLoading } = useSession()
@@ -25,19 +29,18 @@ export const ProtectedRoute = ({
     )
   }
 
-  if (!session) {
-    return <Navigate to="/login" replace />
-  }
+  if (!session) return <Navigate to="/login" replace />
 
-  if (requiredRol && usuario) {
-    const roles = Array.isArray(requiredRol) ? requiredRol : [requiredRol]
-    if (!roles.includes(usuario.rol_funcional)) {
+  // Verificar acceso al módulo según matriz de permisos
+  if (requiredModulo && usuario) {
+    if (!puedeAcceder(requiredModulo, usuario.rol_funcional, usuario.nivel_jerarquico)) {
       return <Navigate to="/sin-permiso" replace />
     }
   }
 
+  // Verificar nivel jerárquico mínimo (para restricciones adicionales)
   if (requiredNivelMinimo && usuario) {
-    const userIdx = JERARQUIA.indexOf(usuario.nivel_jerarquico)
+    const userIdx     = JERARQUIA.indexOf(usuario.nivel_jerarquico)
     const requiredIdx = JERARQUIA.indexOf(requiredNivelMinimo)
     if (userIdx < requiredIdx) {
       return <Navigate to="/sin-permiso" replace />

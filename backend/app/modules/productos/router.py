@@ -100,7 +100,7 @@ def actualizar_producto(
     return RespuestaSimple(data=ProductoResponse.model_validate(producto))
 
 
-@router.delete("/{producto_id}", response_model=RespuestaSimple[ProductoResponse])
+@router.delete("/{producto_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
 def eliminar_producto(
     request: Request,
@@ -108,7 +108,6 @@ def eliminar_producto(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_rol(["admin"])),
 ):
-    producto = svc.eliminar_producto(db, producto, current_user.id)
+    svc.eliminar_producto(db, producto, current_user.id)
     db.commit()
     log_audit(db, "DELETE", "productos", current_user.id, producto.id, request=request)
-    return RespuestaSimple(data=ProductoResponse.model_validate(producto))

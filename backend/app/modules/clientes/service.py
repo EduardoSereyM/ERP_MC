@@ -59,6 +59,9 @@ def obtener_cliente_por_rut(db: Session, rut: str) -> Cliente | None:
 
 
 def crear_cliente(db: Session, data: ClienteCreate, user_id: UUID) -> Cliente:
+    from fastapi import HTTPException
+    if obtener_cliente_por_rut(db, data.rut):
+        raise HTTPException(status_code=409, detail="Ya existe un cliente con ese RUT")
     codigo = _siguiente_codigo_cliente(db)
     cliente = Cliente(
         id=uuid4(),

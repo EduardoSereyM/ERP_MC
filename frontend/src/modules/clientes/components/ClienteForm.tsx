@@ -4,6 +4,7 @@ import type { ChileLocationValue } from '@/shared/components/ui'
 import { useCrearCliente, useActualizarCliente } from '../hooks/useClientes'
 import type { ClienteCreate, ClienteUpdate, ClienteListItem, Cliente } from '../types'
 import { validarRut, normalizarRut, formatearRut, formatearRutInput } from '@/shared/utils/rut'
+import { usePermisos } from '@/core/hooks/usePermisos'
 
 interface ClienteFormProps {
   initial?: ClienteListItem | null
@@ -60,6 +61,12 @@ export const ClienteForm = ({ initial, onSuccess, onCancel, onCreated }: Cliente
   const [form, setForm] = useState<FormState>(EMPTY)
   const [touched, setTouched] = useState<TouchedState>({})
   const [rutError, setRutError] = useState('')
+
+  const permisos = usePermisos()
+  const isEditMode = !!initial
+  // RUT protegido en edición — solo jefatura/gerencia/admin pueden modificarlo
+  const rutEditable = !isEditMode || permisos.puedeEditarCampo('clientes', 'rut')
+  const rutTooltip  = isEditMode ? permisos.tooltipCampo('clientes', 'rut') : null
 
   const crear = useCrearCliente()
   const actualizar = useActualizarCliente(initial?.id ?? '')
@@ -223,16 +230,33 @@ export const ClienteForm = ({ initial, onSuccess, onCancel, onCreated }: Cliente
           error={errors.razon_social}
           success={success.razon_social}
         />
-        <Input
-          label="RUT"
-          required
-          value={form.rut}
-          onChange={handleRutChange}
-          onBlur={handleRutBlur}
-          placeholder="12.345.678-9"
-          error={rutError}
-          success={success.rut}
-        />
+        {/* RUT — protegido en modo edición para usuarios sin jefatura */}
+        {rutEditable ? (
+          <Input
+            label="RUT"
+            required
+            value={form.rut}
+            onChange={handleRutChange}
+            onBlur={handleRutBlur}
+            placeholder="12.345.678-9"
+            error={rutError}
+            success={success.rut}
+          />
+        ) : (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-text-primary">RUT</label>
+            <div
+              title={rutTooltip ?? undefined}
+              className="flex items-center gap-2 rounded-lg border border-surface-border bg-surface-muted px-3 py-2 text-sm text-text-secondary cursor-not-allowed select-none"
+            >
+              <span className="flex-1 font-mono">{form.rut}</span>
+              <span className="material-symbols-outlined text-base text-text-disabled">lock</span>
+            </div>
+            {rutTooltip && (
+              <p className="text-xs text-text-disabled">{rutTooltip}</p>
+            )}
+          </div>
+        )}
         <Input
           label="Email"
           type="email"

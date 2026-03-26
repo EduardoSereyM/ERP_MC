@@ -9,8 +9,8 @@ from app.core.database import get_db
 from app.core.middleware import limiter
 from app.modules.auth.dependencies import CurrentUser, get_current_user, require_rol, require_nivel_minimo
 from app.modules.ventas import service as svc
-from app.modules.ventas.dependencies import get_cotizacion_or_404, get_linea_or_404, get_venta_or_404
-from app.modules.ventas.models import Cotizacion, LineaCotizacion, Venta
+from app.modules.ventas.dependencies import get_cotizacion_or_404, get_linea_or_404, get_stub_or_404, get_venta_or_404
+from app.modules.ventas.models import Cotizacion, LineaCotizacion, SolicitudStub, Venta
 from app.modules.ventas.schemas import (
     CotizacionCambioEstado,
     CotizacionCreate,
@@ -157,6 +157,53 @@ def cambiar_estado_cotizacion(
     return RespuestaSimple(data=svc.cotizacion_to_response(db, cotizacion))
 
 
+# ─── Helpers compartidos ──────────────────────────────────────────────────────
+
+_MOTIVO_LABEL = {
+    "cliente_vip": "Cliente VIP", "ciberday": "Ciberday",
+    "black_friday": "Black Friday", "promocion_temporada": "Promoción de temporada",
+    "ajuste_comercial": "Ajuste comercial", "fidelidad": "Descuento por fidelidad", "otro": "Otro",
+}
+
+
+def _build_cotizacion_data(cotizacion: Cotizacion, db) -> dict:
+    """Construye el dict de datos de cotización para email y PDF."""
+    from app.modules.clientes.models import Cliente
+    from sqlalchemy import select as sa_select
+    from datetime import datetime
+
+    cliente = db.execute(
+        sa_select(Cliente).where(Cliente.id == cotizacion.cliente_id)
+    ).scalar_one_or_none()
+
+    resp = svc.cotizacion_to_response(db, cotizacion)
+    return {
+        "codigo": cotizacion.codigo,
+        "estado": cotizacion.estado,
+        "cliente_razon_social": cliente.razon_social if cliente else "—",
+        "cliente_rut": cliente.rut if cliente else None,
+        "fecha_vencimiento": cotizacion.fecha_vencimiento.strftime("%d/%m/%Y") if cotizacion.fecha_vencimiento else "—",
+        "fecha_envio": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "monto_subtotal": cotizacion.monto_subtotal,
+        "monto_iva": cotizacion.monto_iva,
+        "monto_total": cotizacion.monto_total,
+        "descuento_global_pct": float(getattr(cotizacion, "descuento_global_pct", 0) or 0),
+        "descuento_motivo": getattr(cotizacion, "descuento_motivo", None),
+        "descuento_motivo_label": _MOTIVO_LABEL.get(getattr(cotizacion, "descuento_motivo", "") or "", ""),
+        "notas_cliente": cotizacion.notas_cliente,
+        "lineas": [
+            {
+                "descripcion": l.descripcion,
+                "cantidad": float(l.cantidad),
+                "precio_unitario": float(l.precio_unitario),
+                "descuento_pct": float(l.descuento_pct),
+                "subtotal": float(l.subtotal),
+            }
+            for l in resp.lineas
+        ],
+    }
+
+
 # ─── Envío de cotización por email ───────────────────────────────────────────
 
 class EnviarCotizacionPayload(BaseModel):
@@ -172,44 +219,8 @@ def enviar_cotizacion_email(
     current_user: CurrentUser = Depends(require_rol(["vendedor", "admin", "gerencia"])),
 ):
     from app.shared.email import enviar_cotizacion
-    from app.modules.clientes.models import Cliente
-    from sqlalchemy import select as sa_select
-    from datetime import datetime
 
-    cliente = db.execute(
-        sa_select(Cliente).where(Cliente.id == cotizacion.cliente_id)
-    ).scalar_one_or_none()
-
-    MOTIVO_LABEL = {
-        "cliente_vip": "Cliente VIP", "ciberday": "Ciberday",
-        "black_friday": "Black Friday", "promocion_temporada": "Promoción de temporada",
-        "ajuste_comercial": "Ajuste comercial", "fidelidad": "Descuento por fidelidad", "otro": "Otro",
-    }
-
-    resp = svc.cotizacion_to_response(db, cotizacion)
-    data = {
-        "codigo": cotizacion.codigo,
-        "cliente_razon_social": cliente.razon_social if cliente else "—",
-        "fecha_vencimiento": cotizacion.fecha_vencimiento.strftime("%d/%m/%Y") if cotizacion.fecha_vencimiento else "—",
-        "fecha_envio": datetime.now().strftime("%d/%m/%Y %H:%M"),
-        "monto_subtotal": cotizacion.monto_subtotal,
-        "monto_iva": cotizacion.monto_iva,
-        "monto_total": cotizacion.monto_total,
-        "descuento_global_pct": float(getattr(cotizacion, "descuento_global_pct", 0) or 0),
-        "descuento_motivo": getattr(cotizacion, "descuento_motivo", None),
-        "descuento_motivo_label": MOTIVO_LABEL.get(getattr(cotizacion, "descuento_motivo", "") or "", ""),
-        "notas_cliente": cotizacion.notas_cliente,
-        "lineas": [
-            {
-                "descripcion": l.descripcion,
-                "cantidad": float(l.cantidad),
-                "precio_unitario": float(l.precio_unitario),
-                "descuento_pct": float(l.descuento_pct),
-                "subtotal": float(l.subtotal),
-            }
-            for l in resp.lineas
-        ],
-    }
+    data = _build_cotizacion_data(cotizacion, db)
 
     try:
         enviar_cotizacion(payload.email_destinatario, data)
@@ -225,6 +236,28 @@ def enviar_cotizacion_email(
     return {"ok": True, "mensaje": f"Cotización enviada a {payload.email_destinatario}"}
 
 
+# ─── Descarga de cotización en PDF ────────────────────────────────────────────
+
+@router.get("/cotizaciones/{cotizacion_id}/pdf")
+def descargar_cotizacion_pdf(
+    cotizacion: Cotizacion = Depends(get_cotizacion_or_404),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_rol(["vendedor", "admin", "gerencia"])),
+):
+    from app.shared.pdf import generar_cotizacion_pdf
+    from fastapi.responses import Response
+
+    data = _build_cotizacion_data(cotizacion, db)
+    pdf_bytes = generar_cotizacion_pdf(data)
+
+    filename = f"{cotizacion.codigo}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # ─── Líneas de cotización ─────────────────────────────────────────────────────
 
 @router.post("/cotizaciones/{cotizacion_id}/lineas", response_model=RespuestaSimple[CotizacionResponse], status_code=status.HTTP_201_CREATED)
@@ -236,8 +269,9 @@ def agregar_linea(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_rol(["vendedor", "admin", "gerencia"])),
 ):
-    svc.agregar_linea(db, cotizacion, payload, current_user.id)
+    linea = svc.agregar_linea(db, cotizacion, payload, current_user.id)
     db.commit()
+    log_audit(db, "CREATE", "lineas_cotizacion", current_user.id, linea.id, request=request)
     db.refresh(cotizacion)
     return RespuestaSimple(data=svc.cotizacion_to_response(db, cotizacion))
 
@@ -254,6 +288,7 @@ def actualizar_linea(
 ):
     svc.actualizar_linea(db, linea, payload, current_user.id)
     db.commit()
+    log_audit(db, "UPDATE", "lineas_cotizacion", current_user.id, linea.id, request=request)
     db.refresh(cotizacion)
     return RespuestaSimple(data=svc.cotizacion_to_response(db, cotizacion))
 
@@ -267,8 +302,10 @@ def eliminar_linea(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_rol(["vendedor", "admin", "gerencia"])),
 ):
+    linea_id = linea.id
     svc.eliminar_linea(db, linea, current_user.id)
     db.commit()
+    log_audit(db, "DELETE", "lineas_cotizacion", current_user.id, linea_id, request=request)
 
 
 # ─── Stubs ────────────────────────────────────────────────────────────────────
@@ -310,19 +347,11 @@ def crear_stub(
 @limiter.limit("30/minute")
 def cambiar_estado_stub(
     request: Request,
-    stub_id: UUID,
     payload: StubCambioEstado,
+    stub: SolicitudStub = Depends(get_stub_or_404),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    from sqlalchemy import select
-    from app.modules.ventas.models import SolicitudStub
-    from fastapi import HTTPException
-    stub = db.execute(
-        select(SolicitudStub).where(SolicitudStub.id == stub_id, SolicitudStub.is_deleted == False)
-    ).scalar_one_or_none()
-    if not stub:
-        raise HTTPException(status_code=404, detail="Stub no encontrado")
     stub = svc.cambiar_estado_stub(db, stub, payload.estado, current_user.id, payload.respuesta)
     db.commit()
     db.refresh(stub)

@@ -5,11 +5,46 @@ from app.core.database import get_db
 from app.core.middleware import limiter
 from app.core.audit import log_audit
 from app.modules.auth.dependencies import get_current_user, CurrentUser
-from app.modules.auth.service import obtener_usuario_por_id
-from app.modules.auth.schemas import UsuarioResponse
+from app.modules.auth.service import login_con_password, obtener_usuario_por_id, refresh_session
+from app.modules.auth.schemas import LoginRequest, RefreshRequest, TokenResponse, UsuarioResponse
 from app.shared.responses import RespuestaSimple
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post(
+    "/login",
+    response_model=RespuestaSimple[TokenResponse],
+    summary="Iniciar sesión con email y contraseña",
+)
+@limiter.limit("10/minute")
+def auth_login(
+    request: Request,
+    payload: LoginRequest,
+    db: Session = Depends(get_db),
+):
+    tokens = login_con_password(
+        payload.email,
+        payload.password.get_secret_value(),
+        db,
+    )
+    log_audit(db, "LOGIN", "auth", request=request)
+    return RespuestaSimple(data=TokenResponse(**tokens))
+
+
+@router.post(
+    "/refresh",
+    response_model=RespuestaSimple[TokenResponse],
+    summary="Refrescar sesión con refresh token",
+)
+@limiter.limit("30/minute")
+def auth_refresh(
+    request: Request,
+    payload: RefreshRequest,
+    db: Session = Depends(get_db),
+):
+    tokens = refresh_session(payload.refresh_token, db)
+    return RespuestaSimple(data=TokenResponse(**tokens))
 
 
 @router.get(
@@ -18,7 +53,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     summary="Obtener perfil del usuario autenticado",
 )
 @limiter.limit("60/minute")
-async def get_me(
+def get_me(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -33,16 +68,10 @@ async def get_me(
     summary="Cerrar sesión (revoca token del lado del cliente)",
 )
 @limiter.limit("10/minute")
-async def logout(
+def logout(
     request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    await log_audit(
-        db=db,
-        action="LOGOUT",
-        entity_type="auth",
-        user_id=current_user.id,
-        request=request,
-    )
+    log_audit(db, "LOGOUT", "auth", user_id=current_user.id, request=request)
     return None

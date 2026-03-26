@@ -44,11 +44,6 @@ def crear_cliente(
         require_rol(["vendedor", "coordinador_instalaciones", "admin", "gerencia"])
     ),
 ):
-    # Verificar RUT duplicado
-    from fastapi import HTTPException
-    if svc.obtener_cliente_por_rut(db, payload.rut):
-        raise HTTPException(status_code=409, detail="Ya existe un cliente con ese RUT")
-
     cliente = svc.crear_cliente(db, payload, current_user.id)
     db.commit()
     db.refresh(cliente)
@@ -83,7 +78,7 @@ def actualizar_cliente(
     return RespuestaSimple(data=ClienteResponse.model_validate(cliente))
 
 
-@router.delete("/{cliente_id}", response_model=RespuestaSimple[ClienteResponse])
+@router.delete("/{cliente_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("30/minute")
 def eliminar_cliente(
     request: Request,
@@ -91,7 +86,6 @@ def eliminar_cliente(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_rol(["admin", "gerencia"])),
 ):
-    cliente = svc.eliminar_cliente(db, cliente, current_user.id)
+    svc.eliminar_cliente(db, cliente, current_user.id)
     db.commit()
     log_audit(db, "DELETE", "clientes", current_user.id, cliente.id, request=request)
-    return RespuestaSimple(data=ClienteResponse.model_validate(cliente))

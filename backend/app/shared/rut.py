@@ -76,6 +76,8 @@ def validar_rut(rut: str) -> bool:
             return False
         cuerpo = limpio[:-1]
         dv = limpio[-1]
+        if int(cuerpo) == 0:
+            return False
         return _calcular_dv(cuerpo) == dv
     except Exception:
         return False

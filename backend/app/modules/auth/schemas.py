@@ -23,6 +23,17 @@ class LoginRequest(BaseModel):
     password: SecretStr = Field(min_length=6)
 
 
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    expires_in: int
+    token_type: str = "bearer"
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
 class UsuarioResponse(BaseModel):
     id: UUID
     email: str

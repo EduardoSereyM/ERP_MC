@@ -120,6 +120,16 @@ export async function enviarCotizacionEmail(cotizacionId: string, email: string)
   return data
 }
 
+export async function descargarCotizacionPdf(cotizacionId: string, codigo: string): Promise<void> {
+  const response = await api.get(`/ventas/cotizaciones/${cotizacionId}/pdf`, { responseType: 'blob' })
+  const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${codigo}.pdf`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ─── Stubs ────────────────────────────────────────────────────────────────────
 
 export async function listarStubs(params: ListStubsParams = {}): Promise<PaginatedResponse<SolicitudStub>> {

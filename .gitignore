@@ -9,9 +9,7 @@
 .env.local
 .env.production
 .env.staging
-# .env.example NO se ignora — es el archivo de referencia para el equipo
-!.env.example
-!**/.env.example
+# .env.example también se ignora — los valores de referencia están en ENGINEERING_STANDARDS.md
 
 # Archivo con credenciales antiguas
 old_supabase_conn.md
@@ -72,3 +70,8 @@ ehthumbs.db
 
 # ── Claude Code (configuración local del IDE) ─
 .claude/
+
+
+# -- archivos sensibles que no deben ir al repositorio --
+old_supabase_conn.md
+auditoria_engineering_standards.md

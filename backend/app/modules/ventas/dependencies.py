@@ -33,6 +33,17 @@ def get_cotizacion_or_404(
     return cotizacion
 
 
+def get_stub_or_404(
+    stub_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> SolicitudStub:
+    stub = ventas_svc.obtener_stub(db, stub_id)
+    if not stub:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stub no encontrado")
+    return stub
+
+
 def get_linea_or_404(
     linea_id: UUID,
     db: Session = Depends(get_db),

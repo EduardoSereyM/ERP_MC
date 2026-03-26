@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button, Modal } from '@/shared/components/ui'
-import { useToast } from '@/shared/context'
+import { useToast } from '@/shared/hooks/useToast'
 import * as ventasApiDirect from '../api'
 import {
   useVenta, useCotizaciones, useCrearCotizacion,
@@ -49,27 +49,50 @@ const fmtPct = (n: number | string) => {
 const MOTIVO_LABEL = Object.fromEntries(MOTIVOS_DESCUENTO.map(m => [m.value, m.label]))
 
 const TRANSICION_LABEL: Partial<Record<EstadoVenta, string>> = {
-  COTIZACION_ENVIADA: 'Enviar cotización',
+  COTIZACION_ENVIADA: 'Registrar cotización enviada',
   VENTA_GENERADA:     'Confirmar venta',
   EN_PROCESO:         'Iniciar proceso',
   CERRADA:            'Cerrar venta',
-  CONSULTA_ABIERTA:   'Volver a consulta',
+  CONSULTA_ABIERTA:   'Reabrir como consulta',
+}
+
+const TRANSICION_TOOLTIP: Partial<Record<EstadoVenta, string>> = {
+  CONSULTA_ABIERTA: 'Devuelve la venta al estado inicial de consulta. Úsalo si necesitas rehacer cotizaciones desde cero.',
 }
 
 const TRANSICIONES_COT: Record<EstadoCotizacion, EstadoCotizacion[]> = {
   BORRADOR:  ['ENVIADA'],
-  ENVIADA:   ['ACEPTADA', 'RECHAZADA', 'VENCIDA'],
+  ENVIADA:   ['ACEPTADA', 'RECHAZADA'],   // VENCIDA se gestiona automáticamente por fecha
   ACEPTADA:  [],
   RECHAZADA: [],
   VENCIDA:   [],
 }
 
 const COT_TRANSICION_LABEL: Partial<Record<EstadoCotizacion, string>> = {
-  ENVIADA:   'Enviar al cliente',
+  ENVIADA:   'Marcar como enviada',
   ACEPTADA:  'Marcar aceptada',
   RECHAZADA: 'Marcar rechazada',
-  VENCIDA:   'Marcar vencida',
 }
+
+const COT_TRANSICION_TOOLTIP: Partial<Record<EstadoCotizacion, string>> = {
+  ACEPTADA:  'El cliente confirmó que acepta esta cotización.',
+  RECHAZADA: 'El cliente rechazó esta cotización. Se puede crear una nueva.',
+  VENCIDA:   'La cotización expiró sin respuesta del cliente.',
+}
+
+// ─── Tooltip ──────────────────────────────────────────────────────────────────
+
+const Tooltip = ({ text }: { text: string }) => (
+  <span className="relative group inline-flex items-center">
+    <span className="ml-1.5 w-4 h-4 rounded-full bg-surface-subtle border border-surface-border text-text-disabled text-[10px] flex items-center justify-center cursor-help font-bold select-none">
+      ?
+    </span>
+    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 text-xs bg-gray-900 text-white rounded-lg px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 leading-relaxed shadow-lg">
+      {text}
+      <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+    </span>
+  </span>
+)
 
 // ─── CotizacionCard ───────────────────────────────────────────────────────────
 
@@ -77,32 +100,57 @@ function CotizacionCard({
   cotizacion: cot,
   ventaId,
   clienteEmail,
+  ventaEstado,
   onEstadoCot,
+  onEstadoVenta,
   pendingEstadoCot,
 }: {
   cotizacion: Cotizacion
   ventaId: string
   clienteEmail?: string
+  ventaEstado: EstadoVenta
   onEstadoCot: (cotId: string, estado: EstadoCotizacion) => void
+  onEstadoVenta: (estado: EstadoVenta) => void
   pendingEstadoCot: boolean
 }) {
   const [lineaOpen, setLineaOpen] = useState(false)
   const [editingLinea, setEditingLinea] = useState<LineaCotizacion | null>(null)
   const [emailOpen, setEmailOpen] = useState(false)
   const [emailDest, setEmailDest] = useState(clienteEmail ?? '')
+  const [marcarEnviadaOpen, setMarcarEnviadaOpen] = useState(false)
   const { success, error: toastError } = useToast()
   const agregarLinea    = useAgregarLinea(ventaId, cot.id)
   const actualizarLinea = useActualizarLinea(ventaId, cot.id)
   const eliminarLinea   = useEliminarLinea(ventaId, cot.id)
 
+  const handleDescargarPdf = async () => {
+    await ventasApiDirect.descargarCotizacionPdf(cot.id, cot.codigo)
+    // Si está en BORRADOR, preguntar si marcar como enviada
+    if (cot.estado === 'BORRADOR') setMarcarEnviadaOpen(true)
+  }
+
+  const handleConfirmarEnviada = () => {
+    onEstadoCot(cot.id, 'ENVIADA')
+    if (ventaEstado === 'CONSULTA_ABIERTA') onEstadoVenta('COTIZACION_ENVIADA')
+    setMarcarEnviadaOpen(false)
+  }
+
   const enviarEmail = useMutation({
     mutationFn: (email: string) => ventasApiDirect.enviarCotizacionEmail(cot.id, email),
-    onSuccess: (res) => { success(res.mensaje); setEmailOpen(false) },
+    onSuccess: (res) => {
+      success(res.mensaje)
+      setEmailOpen(false)
+      // Auto-transicionar cotización a ENVIADA si está en BORRADOR
+      if (cot.estado === 'BORRADOR') onEstadoCot(cot.id, 'ENVIADA')
+      // Auto-avanzar venta a COTIZACION_ENVIADA si corresponde
+      if (ventaEstado === 'CONSULTA_ABIERTA') onEstadoVenta('COTIZACION_ENVIADA')
+    },
     onError: (e: any) => toastError(e?.response?.data?.detail ?? 'Error al enviar el correo'),
   })
 
   const puedeEditar = cot.estado === 'BORRADOR'
-  const siguientes  = TRANSICIONES_COT[cot.estado as EstadoCotizacion] ?? []
+  // ENVIADA se gestiona automáticamente al enviar email — no se muestra como botón manual
+  const siguientes = (TRANSICIONES_COT[cot.estado as EstadoCotizacion] ?? []).filter(t => t !== 'ENVIADA')
 
   const handleAgregarLinea = async (lines: LineaCotizacionCreate[]) => {
     for (const line of lines) await agregarLinea.mutateAsync(line)
@@ -159,6 +207,7 @@ function CotizacionCard({
                 <th className="text-right pb-2 font-medium whitespace-nowrap px-3">Cant.</th>
                 <th className="text-right pb-2 font-medium whitespace-nowrap px-3">P. Unit.</th>
                 <th className="text-right pb-2 font-medium whitespace-nowrap px-3">Desc.</th>
+                <th className="text-right pb-2 font-medium whitespace-nowrap px-3">Sin desc.</th>
                 <th className="text-right pb-2 font-medium whitespace-nowrap pl-3">Subtotal</th>
                 {puedeEditar && <th className="w-16" />}
               </tr>
@@ -174,6 +223,11 @@ function CotizacionCard({
                       ? <span className="text-emerald-600 font-medium">{fmtPct(l.descuento_pct)}</span>
                       : <span className="text-text-disabled">—</span>
                     }
+                  </td>
+                  <td className="py-2.5 text-right text-text-disabled font-mono px-3 tabular-nums line-through">
+                    {Number(l.descuento_pct) > 0
+                      ? fmt(Number(l.cantidad) * Number(l.precio_unitario))
+                      : <span className="no-underline">—</span>}
                   </td>
                   <td className="py-2.5 text-right font-semibold text-text-primary font-mono pl-3 tabular-nums">{fmt(l.subtotal)}</td>
                   {puedeEditar && (
@@ -252,28 +306,39 @@ function CotizacionCard({
                 + Agregar línea
               </Button>
             )}
-            {/* Botón enviar email — disponible siempre que haya líneas */}
+            {/* Botones disponibles cuando hay líneas */}
             {cot.lineas.length > 0 && (
-              <Button size="sm" variant="outline" onClick={() => { setEmailDest(clienteEmail ?? ''); setEmailOpen(true) }}>
-                <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                Enviar por email
-              </Button>
+              <>
+                <Button size="sm" variant="outline" onClick={handleDescargarPdf}>
+                  <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  {cot.estado === 'ENVIADA' ? 'Re-descargar PDF' : 'Descargar PDF'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { setEmailDest(clienteEmail ?? ''); setEmailOpen(true) }}>
+                  <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  {cot.estado === 'ENVIADA' ? 'Reenviar por email' : 'Enviar por email'}
+                </Button>
+              </>
             )}
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
             {siguientes.map(t => (
-              <Button
-                key={t}
-                size="sm"
-                variant={t === 'RECHAZADA' || t === 'VENCIDA' ? 'danger' : 'primary'}
-                loading={pendingEstadoCot}
-                onClick={() => onEstadoCot(cot.id, t)}
-              >
-                {COT_TRANSICION_LABEL[t] ?? ESTADO_COTIZACION_LABEL[t]}
-              </Button>
+              <span key={t} className="inline-flex items-center">
+                <Button
+                  size="sm"
+                  variant={t === 'RECHAZADA' || t === 'VENCIDA' ? 'danger' : 'primary'}
+                  loading={pendingEstadoCot}
+                  onClick={() => onEstadoCot(cot.id, t)}
+                >
+                  {COT_TRANSICION_LABEL[t] ?? ESTADO_COTIZACION_LABEL[t]}
+                </Button>
+                {COT_TRANSICION_TOOLTIP[t] && <Tooltip text={COT_TRANSICION_TOOLTIP[t]!} />}
+              </span>
             ))}
           </div>
         </div>
@@ -305,6 +370,22 @@ function CotizacionCard({
             >
               Enviar
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal ¿Marcar como enviada? — aparece tras descargar PDF en BORRADOR */}
+      <Modal open={marcarEnviadaOpen} onClose={() => setMarcarEnviadaOpen(false)} title="PDF descargado" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            ¿Deseas marcar <strong>{cot.codigo}</strong> como enviada al cliente?
+          </p>
+          <p className="text-xs text-text-disabled">
+            Puedes volver a descargar el PDF en cualquier momento si necesitas reenviarla.
+          </p>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={() => setMarcarEnviadaOpen(false)}>No por ahora</Button>
+            <Button onClick={handleConfirmarEnviada}>Sí, marcar como enviada</Button>
           </div>
         </div>
       </Modal>
@@ -370,15 +451,21 @@ export const VentaDetailView = () => {
     )
   }
 
-  // Monto total real = suma de cotizaciones activas (no eliminadas, no rechazadas/vencidas)
-  const montoTotalReal = cotizaciones
+  // Suma de todas las cotizaciones activas (excluye RECHAZADA y VENCIDA)
+  const montoTotalActivas = cotizaciones
     .filter(c => !['RECHAZADA', 'VENCIDA'].includes(c.estado))
     .reduce((sum, c) => sum + Number(c.monto_total), 0)
 
-  const transicionesDisponibles = TRANSICIONES_VENTA[venta.estado].filter(e => e !== 'ANULADA')
+  // Suma solo de cotizaciones ACEPTADAS
+  const montoTotalAceptadas = cotizaciones
+    .filter(c => c.estado === 'ACEPTADA')
+    .reduce((sum, c) => sum + Number(c.monto_total), 0)
+
+  // COTIZACION_ENVIADA se activa automáticamente al enviar email — no se expone como botón manual
+  const transicionesDisponibles = TRANSICIONES_VENTA[venta.estado].filter(e => e !== 'ANULADA' && e !== 'COTIZACION_ENVIADA')
   const puedeAnular = venta.estado !== 'CERRADA' && venta.estado !== 'ANULADA'
   const hayAceptada = cotizaciones.some(c => c.estado === 'ACEPTADA')
-  const puedeCrearCot = venta.estado !== 'CERRADA' && venta.estado !== 'ANULADA' && !hayAceptada
+  const puedeCrearCot = venta.estado !== 'CERRADA' && venta.estado !== 'ANULADA'
 
   const handleTransicion = (estado: EstadoVenta) => {
     cambiarEstadoVenta.mutate({ estado })
@@ -485,7 +572,9 @@ export const VentaDetailView = () => {
                 cotizacion={cot}
                 ventaId={id}
                 clienteEmail={cliente?.email ?? ''}
+                ventaEstado={venta.estado}
                 onEstadoCot={handleCotEstado}
+                onEstadoVenta={handleTransicion}
                 pendingEstadoCot={cambiarEstadoCot.isPending}
               />
             ))
@@ -510,17 +599,26 @@ export const VentaDetailView = () => {
                 </div>
               )}
               <div className="flex justify-between gap-2 pt-1 border-t border-surface-border">
-                <dt className="text-text-secondary shrink-0">Monto total</dt>
-                <dd className="font-semibold text-text-primary font-mono tabular-nums">{fmt(montoTotalReal)}</dd>
+                <dt className="text-text-secondary shrink-0">Total cotizaciones</dt>
+                <dd className="font-semibold text-text-primary font-mono tabular-nums">{fmt(montoTotalActivas)}</dd>
               </div>
+              {montoTotalAceptadas > 0 && (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-text-secondary shrink-0 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                    Total cotizaciones aceptadas
+                  </dt>
+                  <dd className="font-semibold text-emerald-700 font-mono tabular-nums">{fmt(montoTotalAceptadas)}</dd>
+                </div>
+              )}
               <div className="flex justify-between gap-2">
-                <dt className="text-text-secondary shrink-0">Creada</dt>
+                <dt className="text-text-secondary shrink-0">Venta creada el día</dt>
                 <dd className="text-text-primary">{fmtDate(venta.created_at)}</dd>
               </div>
 
               {/* Fecha cierre — editable inline */}
               <div className="flex justify-between items-center gap-2">
-                <dt className="text-text-secondary shrink-0">Cierre esperado</dt>
+                <dt className="text-text-secondary shrink-0">Cierre esperado óptimo</dt>
                 <dd className="flex items-center gap-1">
                   {editandoFecha ? (
                     <input
@@ -573,15 +671,17 @@ export const VentaDetailView = () => {
               <h3 className="text-xs font-semibold text-text-disabled uppercase tracking-wide">Avanzar estado</h3>
               <div className="flex flex-col gap-2">
                 {transicionesDisponibles.map(estado => (
-                  <Button
-                    key={estado}
-                    variant={estado === 'CONSULTA_ABIERTA' ? 'outline' : 'primary'}
-                    loading={cambiarEstadoVenta.isPending}
-                    onClick={() => handleTransicion(estado)}
-                    className="w-full justify-center"
-                  >
-                    {TRANSICION_LABEL[estado] ?? ESTADO_VENTA_LABEL[estado]}
-                  </Button>
+                  <span key={estado} className="inline-flex items-center gap-1">
+                    <Button
+                      variant={estado === 'CONSULTA_ABIERTA' ? 'outline' : 'primary'}
+                      loading={cambiarEstadoVenta.isPending}
+                      onClick={() => handleTransicion(estado)}
+                      className="w-full justify-center"
+                    >
+                      {TRANSICION_LABEL[estado] ?? ESTADO_VENTA_LABEL[estado]}
+                    </Button>
+                    {TRANSICION_TOOLTIP[estado] && <Tooltip text={TRANSICION_TOOLTIP[estado]!} />}
+                  </span>
                 ))}
               </div>
             </div>

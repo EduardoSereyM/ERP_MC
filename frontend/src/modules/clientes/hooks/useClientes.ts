@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as clientesApi from '../api'
 import { clientesKeys } from '../queryKeys'
-import type { ClienteCreate, ClienteUpdate } from '../types'
-import { useToast } from '@/shared/context'
+import type { Cliente, ClienteCreate, ClienteUpdate } from '../types'
+import { useToast } from '@/shared/hooks/useToast'
 
 export function useClientes(params: clientesApi.ListClientesParams = {}) {
   return useQuery({
@@ -39,8 +39,10 @@ export function useActualizarCliente(id: string) {
     mutationFn: (payload: ClienteUpdate) => clientesApi.actualizarCliente(id, payload),
     onSuccess: (data) => {
       success('Cliente actualizado')
-      queryClient.invalidateQueries({ queryKey: clientesKeys.lists() })
-      queryClient.setQueryData(clientesKeys.detail(id), data)
+      // Actualizar el detalle directamente con la respuesta del servidor
+      queryClient.setQueryData<Cliente>(clientesKeys.detail(id), data)
+      // Invalidar todas las queries de clientes para forzar refetch limpio
+      queryClient.invalidateQueries({ queryKey: clientesKeys.all })
     },
     onError: () => error('Error al actualizar el cliente'),
   })

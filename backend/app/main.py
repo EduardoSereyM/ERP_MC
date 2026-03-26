@@ -9,6 +9,8 @@ from app.core.middleware import limiter, setup_middleware
 from app.modules.auth.router import router as auth_router
 from app.modules.clientes.router import router as clientes_router
 from app.modules.productos.router import router as productos_router
+from app.modules.dashboard.router import router as dashboard_router
+from app.modules.logs.router import router as logs_router
 from app.modules.ventas.router import router as ventas_router, stubs_router
 
 app = FastAPI(
@@ -31,6 +33,8 @@ app.include_router(auth_router, prefix=settings.API_V1_PREFIX)
 
 app.include_router(clientes_router, prefix=settings.API_V1_PREFIX)
 app.include_router(productos_router, prefix=settings.API_V1_PREFIX)
+app.include_router(dashboard_router, prefix=settings.API_V1_PREFIX)
+app.include_router(logs_router, prefix=settings.API_V1_PREFIX)
 app.include_router(ventas_router, prefix=settings.API_V1_PREFIX)
 app.include_router(stubs_router, prefix=settings.API_V1_PREFIX)
 
