@@ -121,7 +121,7 @@ def listar_cotizaciones(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     cotizaciones = svc.listar_cotizaciones(db, venta.id)
-    return RespuestaSimple(data=[CotizacionResponse.model_validate(c) for c in cotizaciones])
+    return RespuestaSimple(data=[svc.cotizacion_to_response(db, c) for c in cotizaciones])
 
 
 @router.post("/{venta_id}/cotizaciones", response_model=RespuestaSimple[CotizacionResponse], status_code=status.HTTP_201_CREATED)
@@ -137,7 +137,7 @@ def crear_cotizacion(
     db.commit()
     db.refresh(cotizacion)
     log_audit(db, "CREATE", "cotizaciones", current_user.id, cotizacion.id, request=request)
-    return RespuestaSimple(data=CotizacionResponse.model_validate(cotizacion))
+    return RespuestaSimple(data=svc.cotizacion_to_response(db, cotizacion))
 
 
 @router.post("/cotizaciones/{cotizacion_id}/estado", response_model=RespuestaSimple[CotizacionResponse])
@@ -153,7 +153,7 @@ def cambiar_estado_cotizacion(
     db.commit()
     db.refresh(cotizacion)
     log_audit(db, "UPDATE", "cotizaciones", current_user.id, cotizacion.id, metadata={"estado": payload.estado}, request=request)
-    return RespuestaSimple(data=CotizacionResponse.model_validate(cotizacion))
+    return RespuestaSimple(data=svc.cotizacion_to_response(db, cotizacion))
 
 
 # ─── Líneas de cotización ─────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ def agregar_linea(
     svc.agregar_linea(db, cotizacion, payload, current_user.id)
     db.commit()
     db.refresh(cotizacion)
-    return RespuestaSimple(data=CotizacionResponse.model_validate(cotizacion))
+    return RespuestaSimple(data=svc.cotizacion_to_response(db, cotizacion))
 
 
 @router.patch("/cotizaciones/{cotizacion_id}/lineas/{linea_id}", response_model=RespuestaSimple[CotizacionResponse])
@@ -186,7 +186,7 @@ def actualizar_linea(
     svc.actualizar_linea(db, linea, payload, current_user.id)
     db.commit()
     db.refresh(cotizacion)
-    return RespuestaSimple(data=CotizacionResponse.model_validate(cotizacion))
+    return RespuestaSimple(data=svc.cotizacion_to_response(db, cotizacion))
 
 
 @router.delete("/cotizaciones/{cotizacion_id}/lineas/{linea_id}", status_code=status.HTTP_204_NO_CONTENT)

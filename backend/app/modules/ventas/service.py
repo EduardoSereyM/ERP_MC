@@ -210,6 +210,24 @@ def _recalcular_totales_cotizacion(db: Session, cotizacion_id: UUID) -> None:
     )
 
 
+def cotizacion_to_response(db: Session, cotizacion: Cotizacion):
+    """Serializa una Cotizacion incluyendo sus líneas activas."""
+    from app.modules.ventas.schemas import CotizacionResponse, LineaCotizacionResponse
+    lineas = list(
+        db.execute(
+            select(LineaCotizacion)
+            .where(
+                LineaCotizacion.cotizacion_id == cotizacion.id,
+                LineaCotizacion.is_deleted == False,
+            )
+            .order_by(LineaCotizacion.orden)
+        ).scalars().all()
+    )
+    resp = CotizacionResponse.model_validate(cotizacion)
+    resp.lineas = [LineaCotizacionResponse.model_validate(l) for l in lineas]
+    return resp
+
+
 def obtener_linea(db: Session, linea_id: UUID) -> LineaCotizacion | None:
     return db.execute(
         select(LineaCotizacion).where(LineaCotizacion.id == linea_id, LineaCotizacion.is_deleted == False)
