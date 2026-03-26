@@ -265,24 +265,47 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
             />
           </div>
 
-          <Input
-            label="Precio unitario"
-            type="number"
-            min="0"
-            step="1"
-            required
-            value={form.precio_unitario}
-            onChange={e => setForm(f => ({ ...f, precio_unitario: Number(e.target.value) }))}
-          />
-          <Input
-            label="Descuento (%)"
-            type="number"
-            min="0"
-            max="100"
-            step="0.5"
-            value={form.descuento_pct}
-            onChange={e => setForm(f => ({ ...f, descuento_pct: Number(e.target.value) }))}
-          />
+          {/* Precio unitario — solo lectura cuando hay producto vinculado */}
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-text-primary">Precio unitario</label>
+            <input
+              type="text"
+              readOnly={!!form.producto_id}
+              value={fmt(Number(form.precio_unitario))}
+              onChange={e => {
+                if (!form.producto_id) {
+                  const raw = Number(e.target.value.replace(/\D/g, ''))
+                  setForm(f => ({ ...f, precio_unitario: raw }))
+                }
+              }}
+              className={`rounded-lg border px-3 py-2 text-sm focus:outline-none transition-colors ${
+                form.producto_id
+                  ? 'border-surface-border bg-surface-muted text-text-secondary cursor-default select-none'
+                  : 'border-surface-border bg-surface text-text-primary focus:ring-2 focus:ring-primary'
+              }`}
+            />
+          </div>
+
+          {/* Descuento con monto */}
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-text-primary">
+              Descuento (%)
+              {Number(form.descuento_pct) > 0 && (
+                <span className="ml-1.5 text-xs font-normal text-danger-text">
+                  −{fmt(Number(form.cantidad) * Number(form.precio_unitario) * Number(form.descuento_pct) / 100)}
+                </span>
+              )}
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.5"
+              value={form.descuento_pct}
+              onChange={e => setForm(f => ({ ...f, descuento_pct: Number(e.target.value) }))}
+              className="rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
         </div>
 
         {/* ── Subtotal preview ── */}
