@@ -5,7 +5,8 @@ import type { Categoria, Producto, ProductoCreate, ProductoListItem, ProductoUpd
 // ─── Feature flag ──────────────────────────────────────────────────────────────
 // true  → usa datos fake locales (backend no requerido)
 // false → conecta al backend real (activar en Fase 1F)
-const FAKE_MODE = true
+export const PRODUCTOS_FAKE_MODE = true
+const FAKE_MODE = PRODUCTOS_FAKE_MODE
 
 // ─── Tipos ─────────────────────────────────────────────────────────────────────
 

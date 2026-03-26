@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Button, Input, Modal } from '@/shared/components/ui'
-import { useProductos } from '@/modules/productos'
+import { useProductos, PRODUCTOS_FAKE_MODE } from '@/modules/productos'
 import type { ProductoListItem } from '@/modules/productos'
 import type { LineaCotizacion, LineaCotizacionCreate } from '../types'
 
@@ -102,9 +102,13 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
     e.preventDefault()
     if (!form.descripcion.trim()) return
 
+    // En modo fake, producto_id no existe en la DB → enviamos null para evitar FK violation
+    const prodId = PRODUCTOS_FAKE_MODE ? null : (form.producto_id ?? null)
+
     const lineas: LineaCotizacionCreate[] = [
       {
         ...form,
+        producto_id: prodId,
         cantidad: Number(form.cantidad),
         precio_unitario: Number(form.precio_unitario),
         descuento_pct: Number(form.descuento_pct),
@@ -114,7 +118,7 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
     // Si el usuario quiere agregar instalación → segunda línea
     if (incluirInstalacion && servicioVinculado) {
       lineas.push({
-        producto_id: servicioVinculado.id,
+        producto_id: PRODUCTOS_FAKE_MODE ? null : servicioVinculado.id,
         descripcion: servicioVinculado.nombre,
         cantidad: Number(form.cantidad),
         precio_unitario: Number(servicioVinculado.precio_base),
