@@ -271,6 +271,21 @@ def eliminar_linea(db: Session, linea: LineaCotizacion, user_id: UUID) -> None:
 
 def cambiar_estado_cotizacion(db: Session, cotizacion: Cotizacion, nuevo_estado: str, user_id: UUID) -> Cotizacion:
     _validar_transicion(cotizacion.estado, nuevo_estado, TRANSICIONES_COTIZACION, "cotizacion")
+    # Solo puede haber una cotización ACEPTADA por venta
+    if nuevo_estado == "ACEPTADA":
+        ya_aceptada = db.execute(
+            select(Cotizacion).where(
+                Cotizacion.venta_id == cotizacion.venta_id,
+                Cotizacion.estado == "ACEPTADA",
+                Cotizacion.is_deleted == False,
+                Cotizacion.id != cotizacion.id,
+            )
+        ).scalar_one_or_none()
+        if ya_aceptada:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Ya existe una cotización aceptada ({ya_aceptada.codigo}). Solo puede haber una por venta.",
+            )
     cotizacion.estado = nuevo_estado
     cotizacion.updated_by = user_id
     if nuevo_estado == "ENVIADA":

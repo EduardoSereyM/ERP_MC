@@ -58,6 +58,8 @@ class Cotizacion(Base):
     monto_subtotal: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
     monto_iva: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
     monto_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    descuento_global_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    descuento_motivo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     notas_internas: Mapped[str | None] = mapped_column(Text, nullable=True)
     notas_cliente: Mapped[str | None] = mapped_column(Text, nullable=True)
 

@@ -99,17 +99,26 @@ class LineaCotizacionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+MOTIVOS_DESCUENTO = Literal[
+    "cliente_vip", "ciberday", "black_friday",
+    "promocion_temporada", "ajuste_comercial", "fidelidad", "otro"
+]
+
 class CotizacionCreate(BaseModel):
     validez_dias: int = Field(default=30, ge=1, le=365)
     notas_internas: str | None = None
     notas_cliente: str | None = None
     lineas: list[LineaCotizacionCreate] = []
+    descuento_global_pct: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    descuento_motivo: str | None = None
 
 
 class CotizacionUpdate(BaseModel):
     validez_dias: int | None = Field(None, ge=1, le=365)
     notas_internas: str | None = None
     notas_cliente: str | None = None
+    descuento_global_pct: Decimal | None = Field(None, ge=0, le=100)
+    descuento_motivo: str | None = None
 
 
 class CotizacionCambioEstado(BaseModel):
@@ -131,6 +140,8 @@ class CotizacionResponse(BaseModel):
     monto_total: Decimal
     notas_internas: str | None
     notas_cliente: str | None
+    descuento_global_pct: Decimal = Decimal("0")
+    descuento_motivo: str | None
     lineas: list[LineaCotizacionResponse] = []
     created_at: datetime
     updated_at: datetime

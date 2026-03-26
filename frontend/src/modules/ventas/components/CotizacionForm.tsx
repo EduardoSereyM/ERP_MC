@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, Input, Modal } from '@/shared/components/ui'
-import type { CotizacionCreate } from '../types'
+import { MOTIVOS_DESCUENTO } from '../types'
+import type { CotizacionCreate, MotivoDescuento } from '../types'
 
 interface CotizacionFormProps {
   open: boolean
@@ -15,17 +16,25 @@ export const CotizacionForm = ({ open, isPending, onConfirm, onClose }: Cotizaci
   const [form, setForm] = useState<CotizacionCreate>({
     validez_dias: 30,
     descuento_global_pct: 0,
+    descuento_motivo: null,
     requiere_cubicacion: false,
     notas_internas: '',
     notas_cliente: '',
     lineas: [],
   })
+  const [touched, setTouched] = useState(false)
+
+  const hayDescuento = Number(form.descuento_global_pct) > 0
+  const motivoError = touched && hayDescuento && !form.descuento_motivo
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    setTouched(true)
+    if (hayDescuento && !form.descuento_motivo) return
     onConfirm({
       validez_dias: Number(form.validez_dias),
       descuento_global_pct: Number(form.descuento_global_pct ?? 0),
+      descuento_motivo: form.descuento_motivo ?? null,
       requiere_cubicacion: Boolean(form.requiere_cubicacion),
       notas_internas: form.notas_internas || null,
       notas_cliente: form.notas_cliente || null,
@@ -56,10 +65,39 @@ export const CotizacionForm = ({ open, isPending, onConfirm, onClose }: Cotizaci
             max="100"
             step="0.5"
             value={form.descuento_global_pct ?? 0}
-            onChange={e => setForm(f => ({ ...f, descuento_global_pct: Number(e.target.value) }))}
+            onChange={e => {
+              const v = Number(e.target.value)
+              setForm(f => ({ ...f, descuento_global_pct: v, descuento_motivo: v === 0 ? null : f.descuento_motivo }))
+            }}
             hint="Por cliente VIP, campaña, etc."
           />
         </div>
+
+        {/* Motivo de descuento — obligatorio cuando hay descuento */}
+        {hayDescuento && (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-text-primary">
+              Motivo del descuento <span className="text-danger">*</span>
+            </label>
+            <select
+              value={form.descuento_motivo ?? ''}
+              onChange={e => setForm(f => ({ ...f, descuento_motivo: e.target.value as MotivoDescuento || null }))}
+              className={`rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-colors ${
+                motivoError
+                  ? 'border-danger bg-danger/5 text-text-primary'
+                  : 'border-surface-border bg-surface text-text-primary'
+              }`}
+            >
+              <option value="">— Selecciona un motivo —</option>
+              {MOTIVOS_DESCUENTO.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+            {motivoError && (
+              <p className="text-xs text-danger-text">Debes indicar el motivo del descuento</p>
+            )}
+          </div>
+        )}
 
         {/* Cubicación */}
         <div

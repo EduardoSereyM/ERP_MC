@@ -5,7 +5,7 @@ import { Button } from '@/shared/components/ui'
 import {
   useVenta, useCotizaciones, useCrearCotizacion,
   useCambiarEstadoVenta, useCambiarEstadoCotizacion,
-  useAgregarLinea, useEliminarLinea, useActualizarVenta,
+  useAgregarLinea, useEliminarLinea, useActualizarLinea, useActualizarVenta,
 } from '../hooks/useVentas'
 import * as ventasApi from '../api'
 import { ventasKeys } from '../queryKeys'
@@ -14,16 +14,19 @@ import { EstadoBadge } from '../components/EstadoBadge'
 import { AnularModal } from '../components/AnularModal'
 import { CotizacionForm } from '../components/CotizacionForm'
 import { LineaForm } from '../components/LineaForm'
+import { PRODUCTOS_FAKE_MODE } from '@/modules/productos'
 import {
   ESTADO_VENTA_LABEL,
   ESTADO_COTIZACION_LABEL,
   TRANSICIONES_VENTA,
+  MOTIVOS_DESCUENTO,
 } from '../types'
 import type {
   Cotizacion,
   CotizacionCreate,
   EstadoCotizacion,
   EstadoVenta,
+  LineaCotizacion,
   LineaCotizacionCreate,
 } from '../types'
 
@@ -34,6 +37,13 @@ const fmt = (n: number | string) =>
 
 const fmtDate = (s: string | null | undefined) =>
   s ? new Date(s).toLocaleDateString('es-CL') : '—'
+
+const fmtPct = (n: number | string) => {
+  const v = Number(n)
+  return v % 1 === 0 ? `${v}%` : `${v}%`
+}
+
+const MOTIVO_LABEL = Object.fromEntries(MOTIVOS_DESCUENTO.map(m => [m.value, m.label]))
 
 const TRANSICION_LABEL: Partial<Record<EstadoVenta, string>> = {
   COTIZACION_ENVIADA: 'Enviar cotización',
@@ -72,19 +82,26 @@ function CotizacionCard({
   pendingEstadoCot: boolean
 }) {
   const [lineaOpen, setLineaOpen] = useState(false)
-  const agregarLinea = useAgregarLinea(ventaId, cot.id)
+  const [editingLinea, setEditingLinea] = useState<LineaCotizacion | null>(null)
+  const agregarLinea  = useAgregarLinea(ventaId, cot.id)
+  const actualizarLinea = useActualizarLinea(ventaId, cot.id)
   const eliminarLinea = useEliminarLinea(ventaId, cot.id)
 
   const puedeEditar = cot.estado === 'BORRADOR'
-  const siguientes = TRANSICIONES_COT[cot.estado as EstadoCotizacion] ?? []
+  const siguientes  = TRANSICIONES_COT[cot.estado as EstadoCotizacion] ?? []
 
-  // Acepta 1 o 2 líneas (producto + instalación opcional)
   const handleAgregarLinea = async (lines: LineaCotizacionCreate[]) => {
-    for (const line of lines) {
-      await agregarLinea.mutateAsync(line)
-    }
+    for (const line of lines) await agregarLinea.mutateAsync(line)
     setLineaOpen(false)
   }
+
+  const handleEditarLinea = async (lines: LineaCotizacionCreate[]) => {
+    if (!editingLinea || lines.length === 0) return
+    await actualizarLinea.mutateAsync({ lineaId: editingLinea.id, payload: lines[0] })
+    setEditingLinea(null)
+  }
+
+  const hayDescuento = Number(cot.descuento_global_pct) > 0
 
   return (
     <div className="rounded-xl border border-surface-border bg-white shadow-sm overflow-hidden">
@@ -104,9 +121,12 @@ function CotizacionCard({
               Cubicación
             </span>
           )}
-          {Number(cot.descuento_global_pct) > 0 && (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-              -{cot.descuento_global_pct}% desc.
+          {hayDescuento && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+              -{fmtPct(cot.descuento_global_pct!)}
+              {cot.descuento_motivo && (
+                <span className="text-emerald-600 font-normal">· {MOTIVO_LABEL[cot.descuento_motivo] ?? cot.descuento_motivo}</span>
+              )}
             </span>
           )}
         </div>
@@ -120,37 +140,52 @@ function CotizacionCard({
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-xs text-text-disabled uppercase border-b border-surface-border">
-                <th className="text-left pb-2 font-medium">Descripción</th>
-                <th className="text-right pb-2 font-medium w-14">Cant.</th>
-                <th className="text-right pb-2 font-medium w-28">P. Unit.</th>
-                <th className="text-right pb-2 font-medium w-14">Desc.</th>
-                <th className="text-right pb-2 font-medium w-28">Subtotal</th>
-                {puedeEditar && <th className="w-8" />}
+              <tr className="text-xs text-text-disabled border-b border-surface-border">
+                <th className="text-left pb-2 font-medium w-full">Descripción</th>
+                <th className="text-right pb-2 font-medium whitespace-nowrap px-3">Cant.</th>
+                <th className="text-right pb-2 font-medium whitespace-nowrap px-3">P. Unit.</th>
+                <th className="text-right pb-2 font-medium whitespace-nowrap px-3">Desc.</th>
+                <th className="text-right pb-2 font-medium whitespace-nowrap pl-3">Subtotal</th>
+                {puedeEditar && <th className="w-16" />}
               </tr>
             </thead>
             <tbody>
               {cot.lineas.map(l => (
-                <tr key={l.id} className="border-b border-surface-border/50 last:border-0">
-                  <td className="py-2 pr-4 text-text-primary">{l.descripcion}</td>
-                  <td className="py-2 text-right text-text-secondary">{Number(l.cantidad)}</td>
-                  <td className="py-2 text-right text-text-secondary font-mono">{fmt(l.precio_unitario)}</td>
-                  <td className="py-2 text-right text-text-secondary">
-                    {Number(l.descuento_pct) > 0 ? `${l.descuento_pct}%` : '—'}
+                <tr key={l.id} className="border-b border-surface-border/40 last:border-0 hover:bg-surface-muted/50 transition-colors">
+                  <td className="py-2.5 pr-3 text-text-primary">{l.descripcion}</td>
+                  <td className="py-2.5 text-right text-text-secondary px-3 tabular-nums">{Number(l.cantidad)}</td>
+                  <td className="py-2.5 text-right text-text-secondary px-3 font-mono tabular-nums">{fmt(l.precio_unitario)}</td>
+                  <td className="py-2.5 text-right px-3 tabular-nums">
+                    {Number(l.descuento_pct) > 0
+                      ? <span className="text-emerald-600 font-medium">{fmtPct(l.descuento_pct)}</span>
+                      : <span className="text-text-disabled">—</span>
+                    }
                   </td>
-                  <td className="py-2 text-right font-medium text-text-primary font-mono">{fmt(l.subtotal)}</td>
+                  <td className="py-2.5 text-right font-semibold text-text-primary font-mono pl-3 tabular-nums">{fmt(l.subtotal)}</td>
                   {puedeEditar && (
-                    <td className="py-2 text-right">
-                      <button
-                        onClick={() => eliminarLinea.mutate(l.id)}
-                        disabled={eliminarLinea.isPending}
-                        className="text-text-disabled hover:text-danger transition-colors p-1 rounded disabled:opacity-50"
-                        title="Eliminar línea"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                    <td className="py-2.5 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => setEditingLinea(l)}
+                          className="text-text-disabled hover:text-primary transition-colors p-1 rounded"
+                          title="Editar línea"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M15.232 5.232l3.536 3.536M9 13l6.5-6.5a2 2 0 012.828 2.828L11.828 15.828a4 4 0 01-2.828 1.172H7v-2a4 4 0 011.172-2.828z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => eliminarLinea.mutate(l.id)}
+                          disabled={eliminarLinea.isPending}
+                          className="text-text-disabled hover:text-danger transition-colors p-1 rounded disabled:opacity-50"
+                          title="Eliminar línea"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -160,24 +195,39 @@ function CotizacionCard({
         )}
 
         {/* Totales */}
-        <div className="mt-3 pt-3 border-t border-surface-border space-y-1">
+        <div className="mt-3 pt-3 border-t border-surface-border space-y-1.5">
           <div className="flex justify-between text-sm text-text-secondary">
-            <span>Subtotal</span><span className="font-mono">{fmt(cot.monto_subtotal)}</span>
+            <span>Subtotal</span><span className="font-mono tabular-nums">{fmt(cot.monto_subtotal)}</span>
           </div>
-          {Number(cot.descuento_global_pct) > 0 && (
+          {hayDescuento && (
             <div className="flex justify-between text-sm text-emerald-700">
-              <span>Descuento global ({cot.descuento_global_pct}%)</span>
-              <span className="font-mono">-{fmt(cot.monto_subtotal * Number(cot.descuento_global_pct) / 100)}</span>
+              <span>
+                Descuento {fmtPct(cot.descuento_global_pct!)}
+                {cot.descuento_motivo && <span className="text-emerald-600 text-xs ml-1">({MOTIVO_LABEL[cot.descuento_motivo] ?? cot.descuento_motivo})</span>}
+              </span>
+              <span className="font-mono tabular-nums">-{fmt(Number(cot.monto_subtotal) * Number(cot.descuento_global_pct) / 100)}</span>
             </div>
           )}
           <div className="flex justify-between text-sm text-text-secondary">
-            <span>IVA (19%)</span><span className="font-mono">{fmt(cot.monto_iva)}</span>
+            <span>IVA (19%)</span><span className="font-mono tabular-nums">{fmt(cot.monto_iva)}</span>
           </div>
-          <div className="flex justify-between text-base font-semibold text-text-primary pt-1.5 border-t border-surface-border">
-            <span>Total</span><span className="font-mono">{fmt(cot.monto_total)}</span>
+          <div className="flex justify-between text-base font-bold text-text-primary pt-1.5 border-t border-surface-border">
+            <span>Total</span><span className="font-mono tabular-nums">{fmt(cot.monto_total)}</span>
           </div>
         </div>
       </div>
+
+      {/* Notas */}
+      {(cot.notas_internas || cot.notas_cliente) && (
+        <div className="px-5 pb-3 space-y-0.5 border-t border-surface-border pt-3">
+          {cot.notas_internas && (
+            <p className="text-xs text-text-secondary"><strong>Interno:</strong> {cot.notas_internas}</p>
+          )}
+          {cot.notas_cliente && (
+            <p className="text-xs text-text-secondary"><strong>Cliente:</strong> {cot.notas_cliente}</p>
+          )}
+        </div>
+      )}
 
       {/* Card footer — acciones */}
       {(puedeEditar || siguientes.length > 0) && (
@@ -205,23 +255,21 @@ function CotizacionCard({
         </div>
       )}
 
-      {/* Notas */}
-      {(cot.notas_internas || cot.notas_cliente) && (
-        <div className="px-5 pb-4 space-y-1">
-          {cot.notas_internas && (
-            <p className="text-xs text-text-secondary"><strong>Interno:</strong> {cot.notas_internas}</p>
-          )}
-          {cot.notas_cliente && (
-            <p className="text-xs text-text-secondary"><strong>Cliente:</strong> {cot.notas_cliente}</p>
-          )}
-        </div>
-      )}
-
+      {/* Modal agregar línea */}
       <LineaForm
         open={lineaOpen}
         isPending={agregarLinea.isPending}
         onConfirm={handleAgregarLinea}
         onClose={() => setLineaOpen(false)}
+      />
+
+      {/* Modal editar línea */}
+      <LineaForm
+        open={!!editingLinea}
+        initial={editingLinea}
+        isPending={actualizarLinea.isPending}
+        onConfirm={handleEditarLinea}
+        onClose={() => setEditingLinea(null)}
       />
     </div>
   )
@@ -247,10 +295,9 @@ export const VentaDetailView = () => {
   const actualizarVenta    = useActualizarVenta(id)
   const queryClient        = useQueryClient()
 
-  // ── Loading ──
   if (isLoading) {
     return (
-      <div className="p-6 max-w-7xl mx-auto animate-pulse space-y-4">
+      <div className="p-6 max-w-screen-2xl mx-auto animate-pulse space-y-4">
         <div className="h-4 w-32 bg-surface-subtle rounded" />
         <div className="h-8 w-48 bg-surface-subtle rounded" />
         <div className="grid grid-cols-3 gap-4">
@@ -269,8 +316,15 @@ export const VentaDetailView = () => {
     )
   }
 
+  // Monto total real = suma de cotizaciones activas (no eliminadas, no rechazadas/vencidas)
+  const montoTotalReal = cotizaciones
+    .filter(c => !['RECHAZADA', 'VENCIDA'].includes(c.estado))
+    .reduce((sum, c) => sum + Number(c.monto_total), 0)
+
   const transicionesDisponibles = TRANSICIONES_VENTA[venta.estado].filter(e => e !== 'ANULADA')
   const puedeAnular = venta.estado !== 'CERRADA' && venta.estado !== 'ANULADA'
+  const hayAceptada = cotizaciones.some(c => c.estado === 'ACEPTADA')
+  const puedeCrearCot = venta.estado !== 'CERRADA' && venta.estado !== 'ANULADA' && !hayAceptada
 
   const handleTransicion = (estado: EstadoVenta) => {
     cambiarEstadoVenta.mutate({ estado })
@@ -290,11 +344,10 @@ export const VentaDetailView = () => {
   const handleCrearCotizacion = async (data: CotizacionCreate) => {
     try {
       const newCot = await crearCotizacion.mutateAsync(data)
-      // Si requiere cubicación → auto-agregar visita técnica como línea
       if (data.requiere_cubicacion && newCot?.id) {
         await ventasApi.agregarLinea(newCot.id, {
           descripcion: 'Visita técnica / Medición en obra',
-          producto_id: 'prod-fake-008',   // SRV-MED-001
+          producto_id: PRODUCTOS_FAKE_MODE ? null : undefined,
           cantidad: 1,
           precio_unitario: 25000,
           descuento_pct: 0,
@@ -307,7 +360,7 @@ export const VentaDetailView = () => {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-screen-2xl mx-auto space-y-5">
 
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-text-secondary">
@@ -339,7 +392,7 @@ export const VentaDetailView = () => {
       </div>
 
       {/* Dos columnas */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
 
         {/* ── Izquierda: cotizaciones ── */}
         <div className="lg:col-span-2 space-y-4">
@@ -348,8 +401,13 @@ export const VentaDetailView = () => {
               Cotizaciones
               <span className="ml-2 text-sm text-text-disabled font-normal">({cotizaciones.length})</span>
             </h2>
-            {venta.estado !== 'CERRADA' && venta.estado !== 'ANULADA' && (
+            {puedeCrearCot && (
               <Button size="sm" onClick={() => setCotizacionOpen(true)}>+ Nueva cotización</Button>
+            )}
+            {hayAceptada && (
+              <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full font-medium">
+                ✓ Cotización aceptada
+              </span>
             )}
           </div>
 
@@ -360,7 +418,7 @@ export const VentaDetailView = () => {
           ) : cotizaciones.length === 0 ? (
             <div className="rounded-xl border border-dashed border-surface-border p-10 text-center bg-white">
               <p className="text-text-secondary text-sm mb-4">No hay cotizaciones aún.</p>
-              {venta.estado !== 'CERRADA' && venta.estado !== 'ANULADA' && (
+              {puedeCrearCot && (
                 <Button size="sm" onClick={() => setCotizacionOpen(true)}>
                   Crear primera cotización
                 </Button>
@@ -387,29 +445,21 @@ export const VentaDetailView = () => {
             <h3 className="text-xs font-semibold text-text-disabled uppercase tracking-wide">Información</h3>
             <dl className="space-y-2.5 text-sm">
               <div className="flex justify-between gap-2">
-                <dt className="text-text-secondary">Cliente</dt>
-                <dd className="font-medium text-text-primary text-right">
-                  {cliente?.razon_social ?? '—'}
-                </dd>
+                <dt className="text-text-secondary shrink-0">Cliente</dt>
+                <dd className="font-medium text-text-primary text-right">{cliente?.razon_social ?? '—'}</dd>
               </div>
               {cliente?.rut && (
                 <div className="flex justify-between gap-2">
-                  <dt className="text-text-secondary">RUT</dt>
+                  <dt className="text-text-secondary shrink-0">RUT</dt>
                   <dd className="font-mono text-text-primary">{cliente.rut}</dd>
                 </div>
               )}
               <div className="flex justify-between gap-2 pt-1 border-t border-surface-border">
-                <dt className="text-text-secondary">Monto total</dt>
-                <dd className="font-semibold text-text-primary font-mono">{fmt(venta.monto_total)}</dd>
+                <dt className="text-text-secondary shrink-0">Monto total</dt>
+                <dd className="font-semibold text-text-primary font-mono tabular-nums">{fmt(montoTotalReal)}</dd>
               </div>
-              {Number(venta.descuento_pct) > 0 && (
-                <div className="flex justify-between gap-2">
-                  <dt className="text-text-secondary">Descuento</dt>
-                  <dd className="text-text-primary">{venta.descuento_pct}%</dd>
-                </div>
-              )}
               <div className="flex justify-between gap-2">
-                <dt className="text-text-secondary">Creada</dt>
+                <dt className="text-text-secondary shrink-0">Creada</dt>
                 <dd className="text-text-primary">{fmtDate(venta.created_at)}</dd>
               </div>
 

@@ -105,20 +105,30 @@ export interface Cotizacion {
   lineas: LineaCotizacion[]
   created_at: string
   updated_at: string
-  /** Descuento global sobre el subtotal — por cliente, campaña, etc. (pendiente backend) */
   descuento_global_pct?: number
-  /** Si requiere visita de técnico para cubicación (pendiente backend) */
+  descuento_motivo?: string | null
   requiere_cubicacion?: boolean
 }
+
+export const MOTIVOS_DESCUENTO = [
+  { value: 'cliente_vip',        label: 'Cliente VIP' },
+  { value: 'ciberday',           label: 'Ciberday' },
+  { value: 'black_friday',       label: 'Black Friday' },
+  { value: 'promocion_temporada',label: 'Promoción de temporada' },
+  { value: 'ajuste_comercial',   label: 'Ajuste comercial' },
+  { value: 'fidelidad',          label: 'Descuento por fidelidad' },
+  { value: 'otro',               label: 'Otro' },
+] as const
+
+export type MotivoDescuento = typeof MOTIVOS_DESCUENTO[number]['value']
 
 export interface CotizacionCreate {
   validez_dias?: number
   notas_internas?: string | null
   notas_cliente?: string | null
   lineas?: LineaCotizacionCreate[]
-  /** Descuento global — el backend lo ignorará hasta Fase 1F */
   descuento_global_pct?: number
-  /** Si se requiere visita de cubicación — genera línea automática en frontend */
+  descuento_motivo?: MotivoDescuento | null
   requiere_cubicacion?: boolean
 }
 
