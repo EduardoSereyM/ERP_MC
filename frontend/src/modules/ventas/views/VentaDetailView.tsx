@@ -1,7 +1,10 @@
 import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Button } from '@/shared/components/ui'
+import { Button, Modal } from '@/shared/components/ui'
+import { useToast } from '@/shared/context'
+import * as ventasApiDirect from '../api'
 import {
   useVenta, useCotizaciones, useCrearCotizacion,
   useCambiarEstadoVenta, useCambiarEstadoCotizacion,
@@ -73,19 +76,30 @@ const COT_TRANSICION_LABEL: Partial<Record<EstadoCotizacion, string>> = {
 function CotizacionCard({
   cotizacion: cot,
   ventaId,
+  clienteEmail,
   onEstadoCot,
   pendingEstadoCot,
 }: {
   cotizacion: Cotizacion
   ventaId: string
+  clienteEmail?: string
   onEstadoCot: (cotId: string, estado: EstadoCotizacion) => void
   pendingEstadoCot: boolean
 }) {
   const [lineaOpen, setLineaOpen] = useState(false)
   const [editingLinea, setEditingLinea] = useState<LineaCotizacion | null>(null)
-  const agregarLinea  = useAgregarLinea(ventaId, cot.id)
+  const [emailOpen, setEmailOpen] = useState(false)
+  const [emailDest, setEmailDest] = useState(clienteEmail ?? '')
+  const { success, error: toastError } = useToast()
+  const agregarLinea    = useAgregarLinea(ventaId, cot.id)
   const actualizarLinea = useActualizarLinea(ventaId, cot.id)
-  const eliminarLinea = useEliminarLinea(ventaId, cot.id)
+  const eliminarLinea   = useEliminarLinea(ventaId, cot.id)
+
+  const enviarEmail = useMutation({
+    mutationFn: (email: string) => ventasApiDirect.enviarCotizacionEmail(cot.id, email),
+    onSuccess: (res) => { success(res.mensaje); setEmailOpen(false) },
+    onError: (e: any) => toastError(e?.response?.data?.detail ?? 'Error al enviar el correo'),
+  })
 
   const puedeEditar = cot.estado === 'BORRADOR'
   const siguientes  = TRANSICIONES_COT[cot.estado as EstadoCotizacion] ?? []
@@ -232,10 +246,20 @@ function CotizacionCard({
       {/* Card footer — acciones */}
       {(puedeEditar || siguientes.length > 0) && (
         <div className="flex items-center justify-between px-5 py-3 bg-surface-muted border-t border-surface-border gap-2 flex-wrap">
-          <div>
+          <div className="flex gap-2">
             {puedeEditar && (
               <Button size="sm" variant="outline" onClick={() => setLineaOpen(true)}>
                 + Agregar línea
+              </Button>
+            )}
+            {/* Botón enviar email — disponible siempre que haya líneas */}
+            {cot.lineas.length > 0 && (
+              <Button size="sm" variant="outline" onClick={() => { setEmailDest(clienteEmail ?? ''); setEmailOpen(true) }}>
+                <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Enviar por email
               </Button>
             )}
           </div>
@@ -254,6 +278,36 @@ function CotizacionCard({
           </div>
         </div>
       )}
+
+      {/* Modal envío email */}
+      <Modal open={emailOpen} onClose={() => setEmailOpen(false)} title="Enviar cotización por email" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Se enviará la cotización <strong>{cot.codigo}</strong> al correo indicado.
+          </p>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-text-primary">Correo del destinatario</label>
+            <input
+              type="email"
+              autoFocus
+              value={emailDest}
+              onChange={e => setEmailDest(e.target.value)}
+              placeholder="cliente@empresa.cl"
+              className="rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={() => setEmailOpen(false)}>Cancelar</Button>
+            <Button
+              loading={enviarEmail.isPending}
+              disabled={!emailDest.includes('@')}
+              onClick={() => enviarEmail.mutate(emailDest)}
+            >
+              Enviar
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Modal agregar línea */}
       <LineaForm
@@ -430,6 +484,7 @@ export const VentaDetailView = () => {
                 key={cot.id}
                 cotizacion={cot}
                 ventaId={id}
+                clienteEmail={cliente?.email ?? ''}
                 onEstadoCot={handleCotEstado}
                 pendingEstadoCot={cambiarEstadoCot.isPending}
               />

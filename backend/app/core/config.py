@@ -22,5 +22,12 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     PROJECT_NAME: str = "ERP MC"
 
+    # Email (SMTP)
+    SMTP_HOST: str = "mail.testdesarrollo.cl"
+    SMTP_PORT: int = 465
+    SMTP_USER: str = "admin@testdesarrollo.cl"
+    SMTP_PASSWORD: str = ""
+    EMAIL_FROM_NAME: str = "MC ERP"
+
 
 settings = Settings()

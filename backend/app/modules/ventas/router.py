@@ -1,6 +1,7 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.audit import log_audit
@@ -154,6 +155,74 @@ def cambiar_estado_cotizacion(
     db.refresh(cotizacion)
     log_audit(db, "UPDATE", "cotizaciones", current_user.id, cotizacion.id, metadata={"estado": payload.estado}, request=request)
     return RespuestaSimple(data=svc.cotizacion_to_response(db, cotizacion))
+
+
+# ─── Envío de cotización por email ───────────────────────────────────────────
+
+class EnviarCotizacionPayload(BaseModel):
+    email_destinatario: str
+
+@router.post("/cotizaciones/{cotizacion_id}/enviar-email", status_code=status.HTTP_200_OK)
+@limiter.limit("10/minute")
+def enviar_cotizacion_email(
+    request: Request,
+    payload: EnviarCotizacionPayload,
+    cotizacion: Cotizacion = Depends(get_cotizacion_or_404),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_rol(["vendedor", "admin", "gerencia"])),
+):
+    from app.shared.email import enviar_cotizacion
+    from app.modules.clientes.models import Cliente
+    from sqlalchemy import select as sa_select
+    from datetime import datetime
+
+    cliente = db.execute(
+        sa_select(Cliente).where(Cliente.id == cotizacion.cliente_id)
+    ).scalar_one_or_none()
+
+    MOTIVO_LABEL = {
+        "cliente_vip": "Cliente VIP", "ciberday": "Ciberday",
+        "black_friday": "Black Friday", "promocion_temporada": "Promoción de temporada",
+        "ajuste_comercial": "Ajuste comercial", "fidelidad": "Descuento por fidelidad", "otro": "Otro",
+    }
+
+    resp = svc.cotizacion_to_response(db, cotizacion)
+    data = {
+        "codigo": cotizacion.codigo,
+        "cliente_razon_social": cliente.razon_social if cliente else "—",
+        "fecha_vencimiento": cotizacion.fecha_vencimiento.strftime("%d/%m/%Y") if cotizacion.fecha_vencimiento else "—",
+        "fecha_envio": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "monto_subtotal": cotizacion.monto_subtotal,
+        "monto_iva": cotizacion.monto_iva,
+        "monto_total": cotizacion.monto_total,
+        "descuento_global_pct": float(getattr(cotizacion, "descuento_global_pct", 0) or 0),
+        "descuento_motivo": getattr(cotizacion, "descuento_motivo", None),
+        "descuento_motivo_label": MOTIVO_LABEL.get(getattr(cotizacion, "descuento_motivo", "") or "", ""),
+        "notas_cliente": cotizacion.notas_cliente,
+        "lineas": [
+            {
+                "descripcion": l.descripcion,
+                "cantidad": float(l.cantidad),
+                "precio_unitario": float(l.precio_unitario),
+                "descuento_pct": float(l.descuento_pct),
+                "subtotal": float(l.subtotal),
+            }
+            for l in resp.lineas
+        ],
+    }
+
+    try:
+        enviar_cotizacion(payload.email_destinatario, data)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Error al enviar el correo: {exc}",
+        )
+
+    log_audit(db, "UPDATE", "cotizaciones", current_user.id, cotizacion.id,
+              metadata={"accion": "email_enviado", "destinatario": payload.email_destinatario}, request=request)
+    db.commit()
+    return {"ok": True, "mensaje": f"Cotización enviada a {payload.email_destinatario}"}
 
 
 # ─── Líneas de cotización ─────────────────────────────────────────────────────

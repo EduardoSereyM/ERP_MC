@@ -115,6 +115,11 @@ export async function eliminarLinea(cotizacionId: string, lineaId: string): Prom
   await api.delete(`/ventas/cotizaciones/${cotizacionId}/lineas/${lineaId}`)
 }
 
+export async function enviarCotizacionEmail(cotizacionId: string, email: string): Promise<{ ok: boolean; mensaje: string }> {
+  const { data } = await api.post(`/ventas/cotizaciones/${cotizacionId}/enviar-email`, { email_destinatario: email })
+  return data
+}
+
 // ─── Stubs ────────────────────────────────────────────────────────────────────
 
 export async function listarStubs(params: ListStubsParams = {}): Promise<PaginatedResponse<SolicitudStub>> {
