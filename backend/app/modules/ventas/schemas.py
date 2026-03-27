@@ -7,23 +7,26 @@ from pydantic import BaseModel, Field
 
 
 EstadoVenta = Literal[
-    "CONSULTA_ABIERTA", "COTIZACION_ENVIADA", "VENTA_GENERADA", "EN_PROCESO", "CERRADA", "ANULADA"
+    "CONSULTA_ABIERTA", "COTIZACION_ENVIADA", "VENTA_GENERADA", "CERRADA", "ANULADA"
 ]
 EstadoCotizacion = Literal["BORRADOR", "ENVIADA", "ACEPTADA", "RECHAZADA", "VENCIDA"]
-TipoStub = Literal["BOD", "COB", "CTB", "GER"]
+TipoStub = Literal["BOD", "COB", "CTB", "GER", "INS"]
 EstadoStub = Literal["PENDIENTE", "EN_REVISION", "COMPLETADA", "RECHAZADA"]
 OrigenModulo = Literal["ventas", "sac", "servicios_tecnicos", "postventa"]
+TipoVenta = Literal["suministro", "suministro_instalacion", "solo_instalacion"]
 
 # ─── Ventas ───────────────────────────────────────────────────────────────────
 
 class VentaCreate(BaseModel):
     cliente_id: UUID
+    tipo: TipoVenta = "suministro"
     fecha_cierre_esperada: date | None = None
     descuento_pct: Decimal = Field(default=Decimal("0"), ge=0, le=100)
     notas: str | None = None
 
 
 class VentaUpdate(BaseModel):
+    tipo: TipoVenta | None = None
     fecha_cierre_esperada: date | None = None
     descuento_pct: Decimal | None = Field(None, ge=0, le=100)
     notas: str | None = None
@@ -38,8 +41,11 @@ class VentaListItem(BaseModel):
     id: UUID
     codigo: str
     cliente_id: UUID
+    cliente_razon_social: str
+    cliente_rut: str
     vendedor_id: UUID
     estado: str
+    tipo: str
     monto_total: Decimal
     descuento_pct: Decimal
     fecha_cierre_esperada: date | None
@@ -54,9 +60,11 @@ class VentaResponse(BaseModel):
     cliente_id: UUID
     vendedor_id: UUID
     estado: str
+    tipo: str
     monto_total: Decimal
     descuento_pct: Decimal
     fecha_cierre_esperada: date | None
+    fecha_cierre: datetime | None
     fecha_anulacion: datetime | None
     motivo_anulacion: str | None
     notas: str | None
@@ -69,7 +77,7 @@ class VentaResponse(BaseModel):
 # ─── Cotizaciones ─────────────────────────────────────────────────────────────
 
 class LineaCotizacionCreate(BaseModel):
-    producto_id: UUID | None = None
+    producto_id: UUID
     descripcion: str = Field(..., min_length=1, max_length=500)
     cantidad: Decimal = Field(default=Decimal("1"), gt=0)
     precio_unitario: Decimal = Field(default=Decimal("0"), ge=0)
@@ -78,7 +86,6 @@ class LineaCotizacionCreate(BaseModel):
 
 
 class LineaCotizacionUpdate(BaseModel):
-    descripcion: str | None = Field(None, min_length=1, max_length=500)
     cantidad: Decimal | None = Field(None, gt=0)
     precio_unitario: Decimal | None = Field(None, ge=0)
     descuento_pct: Decimal | None = Field(None, ge=0, le=100)
@@ -88,8 +95,9 @@ class LineaCotizacionUpdate(BaseModel):
 class LineaCotizacionResponse(BaseModel):
     id: UUID
     cotizacion_id: UUID
-    producto_id: UUID | None
+    producto_id: UUID
     descripcion: str
+    es_servicio: bool
     cantidad: Decimal
     precio_unitario: Decimal
     descuento_pct: Decimal

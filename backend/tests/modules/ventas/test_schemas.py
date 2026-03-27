@@ -83,7 +83,7 @@ class TestVentaCambioEstado:
 
 class TestLineaCotizacionCreate:
     def test_minima_valida(self):
-        l = LineaCotizacionCreate(descripcion="Servicio A")
+        l = LineaCotizacionCreate(producto_id=uuid4(), descripcion="Servicio A")
         assert l.cantidad == Decimal("1")
         assert l.precio_unitario == Decimal("0")
         assert l.descuento_pct == Decimal("0")
@@ -100,23 +100,23 @@ class TestLineaCotizacionCreate:
 
     def test_descripcion_vacia_rechazada(self):
         with pytest.raises(ValidationError):
-            LineaCotizacionCreate(descripcion="")
+            LineaCotizacionCreate(producto_id=uuid4(), descripcion="")
 
     def test_cantidad_cero_rechazada(self):
         with pytest.raises(ValidationError):
-            LineaCotizacionCreate(descripcion="X", cantidad=Decimal("0"))
+            LineaCotizacionCreate(producto_id=uuid4(), descripcion="X", cantidad=Decimal("0"))
 
     def test_cantidad_negativa_rechazada(self):
         with pytest.raises(ValidationError):
-            LineaCotizacionCreate(descripcion="X", cantidad=Decimal("-1"))
+            LineaCotizacionCreate(producto_id=uuid4(), descripcion="X", cantidad=Decimal("-1"))
 
     def test_descuento_mayor_100_rechazado(self):
         with pytest.raises(ValidationError):
-            LineaCotizacionCreate(descripcion="X", descuento_pct=Decimal("101"))
+            LineaCotizacionCreate(producto_id=uuid4(), descripcion="X", descuento_pct=Decimal("101"))
 
     def test_precio_negativo_rechazado(self):
         with pytest.raises(ValidationError):
-            LineaCotizacionCreate(descripcion="X", precio_unitario=Decimal("-100"))
+            LineaCotizacionCreate(producto_id=uuid4(), descripcion="X", precio_unitario=Decimal("-100"))
 
 
 # ─── LineaCotizacionUpdate ────────────────────────────────────────────────────
@@ -124,11 +124,13 @@ class TestLineaCotizacionCreate:
 class TestLineaCotizacionUpdate:
     def test_parcial_valida(self):
         u = LineaCotizacionUpdate(precio_unitario=Decimal("1000"))
-        assert u.descripcion is None
+        assert u.precio_unitario == Decimal("1000")
+        assert u.cantidad is None
 
-    def test_descripcion_vacia_rechazada(self):
-        with pytest.raises(ValidationError):
-            LineaCotizacionUpdate(descripcion="")
+    def test_vacia_valida(self):
+        u = LineaCotizacionUpdate()
+        assert u.cantidad is None
+        assert u.precio_unitario is None
 
 
 # ─── CotizacionCreate ────────────────────────────────────────────────────────
@@ -141,10 +143,11 @@ class TestCotizacionCreate:
         assert c.descuento_global_pct == Decimal("0")
 
     def test_con_lineas(self):
+        pid = uuid4()
         c = CotizacionCreate(
             lineas=[
-                LineaCotizacionCreate(descripcion="Línea 1", cantidad=Decimal("2"), precio_unitario=Decimal("10000")),
-                LineaCotizacionCreate(descripcion="Línea 2"),
+                LineaCotizacionCreate(producto_id=pid, descripcion="Línea 1", cantidad=Decimal("2"), precio_unitario=Decimal("10000")),
+                LineaCotizacionCreate(producto_id=pid, descripcion="Línea 2"),
             ]
         )
         assert len(c.lineas) == 2

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Button, Input, Modal } from '@/shared/components/ui'
-import { useProductos, PRODUCTOS_FAKE_MODE } from '@/modules/productos'
+import { Button, Modal } from '@/shared/components/ui'
+import { useProductos } from '@/modules/productos'
 import type { ProductoListItem } from '@/modules/productos'
 import type { LineaCotizacion, LineaCotizacionCreate } from '../types'
 import { ProductoCombobox } from './ProductoCombobox'
@@ -25,7 +25,7 @@ const UNIDAD_LABEL: Record<string, string> = {
   m2: 'm²', ml: 'ml', unidad: 'unid.', kg: 'kg', hora: 'hr', otro: '',
 }
 
-const EMPTY: LineaCotizacionCreate = {
+const EMPTY: Omit<LineaCotizacionCreate, 'producto_id'> & { producto_id: string | null } = {
   descripcion: '',
   cantidad: 1,
   precio_unitario: 0,
@@ -36,7 +36,7 @@ const EMPTY: LineaCotizacionCreate = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: LineaFormProps) => {
-  const [form, setForm] = useState<LineaCotizacionCreate>(EMPTY)
+  const [form, setForm] = useState<typeof EMPTY>(EMPTY)
   const [selectedProd, setSelectedProd] = useState<ProductoListItem | null>(null)
   const [incluirInstalacion, setIncluirInstalacion] = useState(false)
 
@@ -95,15 +95,13 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.descripcion.trim()) return
-
-    // En modo fake, producto_id no existe en la DB → enviamos null para evitar FK violation
-    const prodId = PRODUCTOS_FAKE_MODE ? null : (form.producto_id ?? null)
+    if (!form.producto_id) return
+    const productoId = form.producto_id
 
     const lineas: LineaCotizacionCreate[] = [
       {
         ...form,
-        producto_id: prodId,
+        producto_id: productoId,
         cantidad: Number(form.cantidad),
         precio_unitario: Number(form.precio_unitario),
         descuento_pct: Number(form.descuento_pct),
@@ -113,7 +111,7 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
     // Si el usuario quiere agregar instalación → segunda línea
     if (incluirInstalacion && servicioVinculado) {
       lineas.push({
-        producto_id: PRODUCTOS_FAKE_MODE ? null : servicioVinculado.id,
+        producto_id: servicioVinculado.id,
         descripcion: servicioVinculado.nombre,
         cantidad: Number(form.cantidad),
         precio_unitario: Number(servicioVinculado.precio_base),
@@ -207,14 +205,16 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
           </div>
         )}
 
-        {/* ── Descripción ── */}
-        <Input
-          label="Descripción"
-          required
-          value={form.descripcion}
-          onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))}
-          placeholder="Descripción del ítem..."
-        />
+        {/* ── Descripción (derivada del producto, solo lectura) ── */}
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-text-primary">Descripción</label>
+          <input
+            readOnly
+            value={form.descripcion}
+            placeholder="Se completa al seleccionar un producto..."
+            className="rounded-lg border border-surface-border bg-surface-muted px-3 py-2 text-sm text-text-secondary cursor-default select-none"
+          />
+        </div>
 
         {/* ── Cantidad / Precio / Descuento ── */}
         <div className="grid grid-cols-3 gap-3">
@@ -321,7 +321,7 @@ export const LineaForm = ({ open, initial, isPending, onConfirm, onClose }: Line
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button type="submit" loading={isPending}>
+          <Button type="submit" loading={isPending} disabled={!form.producto_id}>
             {initial ? 'Guardar cambios' : incluirInstalacion ? 'Agregar 2 líneas' : 'Agregar línea'}
           </Button>
         </div>

@@ -9,6 +9,7 @@ import {
   useVenta, useCotizaciones, useCrearCotizacion,
   useCambiarEstadoVenta, useCambiarEstadoCotizacion,
   useAgregarLinea, useEliminarLinea, useActualizarLinea, useActualizarVenta,
+  useStubsVenta, useActividadVenta,
 } from '../hooks/useVentas'
 import * as ventasApi from '../api'
 import { ventasKeys } from '../queryKeys'
@@ -17,7 +18,7 @@ import { EstadoBadge } from '../components/EstadoBadge'
 import { AnularModal } from '../components/AnularModal'
 import { CotizacionForm } from '../components/CotizacionForm'
 import { LineaForm } from '../components/LineaForm'
-import { PRODUCTOS_FAKE_MODE } from '@/modules/productos'
+import { useProductos } from '@/modules/productos'
 import {
   ESTADO_VENTA_LABEL,
   ESTADO_COTIZACION_LABEL,
@@ -25,13 +26,16 @@ import {
   MOTIVOS_DESCUENTO,
 } from '../types'
 import type {
+  ActividadItem,
   Cotizacion,
   CotizacionCreate,
   EstadoCotizacion,
   EstadoVenta,
   LineaCotizacion,
   LineaCotizacionCreate,
+  SolicitudStub,
 } from '../types'
+import { ESTADO_STUB_LABEL } from '../types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -41,6 +45,20 @@ const fmt = (n: number | string) =>
 const fmtDate = (s: string | null | undefined) =>
   s ? new Date(s).toLocaleDateString('es-CL') : '—'
 
+const fmtTime = (s: string | null | undefined) =>
+  s ? new Date(s).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) : ''
+
+const fmtDuration = (ms: number): string => {
+  if (ms < 0) ms = 0
+  const mins  = Math.floor(ms / 60000)
+  const hours = Math.floor(mins / 60)
+  const days  = Math.floor(hours / 24)
+  if (days > 0)  return `${days}d ${hours % 24}h`
+  if (hours > 0) return `${hours}h ${mins % 60}min`
+  if (mins > 0)  return `${mins} min`
+  return '< 1 min'
+}
+
 const fmtPct = (n: number | string) => {
   const v = Number(n)
   return v % 1 === 0 ? `${v}%` : `${v}%`
@@ -49,15 +67,15 @@ const fmtPct = (n: number | string) => {
 const MOTIVO_LABEL = Object.fromEntries(MOTIVOS_DESCUENTO.map(m => [m.value, m.label]))
 
 const TRANSICION_LABEL: Partial<Record<EstadoVenta, string>> = {
-  COTIZACION_ENVIADA: 'Registrar cotización enviada',
+  COTIZACION_ENVIADA: 'Avanzar a cotización enviada',
   VENTA_GENERADA:     'Confirmar venta',
-  EN_PROCESO:         'Iniciar proceso',
   CERRADA:            'Cerrar venta',
   CONSULTA_ABIERTA:   'Reabrir como consulta',
 }
 
 const TRANSICION_TOOLTIP: Partial<Record<EstadoVenta, string>> = {
-  CONSULTA_ABIERTA: 'Devuelve la venta al estado inicial de consulta. Úsalo si necesitas rehacer cotizaciones desde cero.',
+  CONSULTA_ABIERTA:   'Devuelve la venta al estado inicial de consulta. Úsalo si necesitas rehacer cotizaciones desde cero.',
+  COTIZACION_ENVIADA: 'Ya existe una cotización enviada al cliente. Avanza el estado de la venta para reflejarlo.',
 }
 
 const TRANSICIONES_COT: Record<EstadoCotizacion, EstadoCotizacion[]> = {
@@ -101,6 +119,7 @@ function CotizacionCard({
   ventaId,
   clienteEmail,
   ventaEstado,
+  hayAceptada,
   onEstadoCot,
   onEstadoVenta,
   pendingEstadoCot,
@@ -109,6 +128,7 @@ function CotizacionCard({
   ventaId: string
   clienteEmail?: string
   ventaEstado: EstadoVenta
+  hayAceptada: boolean
   onEstadoCot: (cotId: string, estado: EstadoCotizacion) => void
   onEstadoVenta: (estado: EstadoVenta) => void
   pendingEstadoCot: boolean
@@ -149,8 +169,13 @@ function CotizacionCard({
   })
 
   const puedeEditar = cot.estado === 'BORRADOR'
-  // ENVIADA se gestiona automáticamente al enviar email — no se muestra como botón manual
-  const siguientes = (TRANSICIONES_COT[cot.estado as EstadoCotizacion] ?? []).filter(t => t !== 'ENVIADA')
+  // ENVIADA se gestiona automáticamente al enviar email — no se muestra como botón manual.
+  // ACEPTADA se oculta si ya existe otra cotización aceptada en esta venta.
+  const siguientes = (TRANSICIONES_COT[cot.estado as EstadoCotizacion] ?? []).filter(t => {
+    if (t === 'ENVIADA') return false
+    if (t === 'ACEPTADA' && hayAceptada) return false
+    return true
+  })
 
   const handleAgregarLinea = async (lines: LineaCotizacionCreate[]) => {
     for (const line of lines) await agregarLinea.mutateAsync(line)
@@ -410,6 +435,46 @@ function CotizacionCard({
   )
 }
 
+// ─── Labels actividad ─────────────────────────────────────────────────────────
+
+const ACTIVIDAD_ENTITY_LABEL: Record<string, string> = {
+  ventas:             'Venta',
+  cotizaciones:       'Cotización',
+  lineas_cotizacion:  'Línea',
+  stubs:              'Solicitud',
+}
+
+const ACTIVIDAD_ACTION_LABEL: Record<string, string> = {
+  CREATE: 'Creado',
+  UPDATE: 'Actualizado',
+  DELETE: 'Eliminado',
+}
+
+function buildActividadTexto(item: ActividadItem): string {
+  const entidad = ACTIVIDAD_ENTITY_LABEL[item.entity_type] ?? item.entity_type
+  const accion  = ACTIVIDAD_ACTION_LABEL[item.action] ?? item.action
+  const codigo  = item.entity_codigo ? ` ${item.entity_codigo}` : ''
+  const estado  = item.event_data?.estado ? ` → ${item.event_data.estado}` : ''
+  const accionExtra = item.event_data?.accion
+    ? ` (${item.event_data.accion === 'email_enviado' ? 'email enviado' : item.event_data.accion})`
+    : ''
+  return `${entidad}${codigo} ${accion}${estado}${accionExtra}`
+}
+
+const STUB_TIPO_LABEL: Record<string, string> = { BOD: 'Bodega', COB: 'Cobranza', CTB: 'Contabilidad', GER: 'Gerencia' }
+const STUB_TIPO_COLOR: Record<string, string> = {
+  BOD: 'bg-sky-100 text-sky-700',
+  COB: 'bg-amber-100 text-amber-700',
+  CTB: 'bg-purple-100 text-purple-700',
+  GER: 'bg-rose-100 text-rose-700',
+}
+const STUB_ESTADO_COLOR: Record<string, string> = {
+  PENDIENTE:   'bg-yellow-100 text-yellow-700',
+  EN_REVISION: 'bg-blue-100 text-blue-700',
+  COMPLETADA:  'bg-emerald-100 text-emerald-700',
+  RECHAZADA:   'bg-rose-100 text-rose-700',
+}
+
 // ─── VentaDetailView ──────────────────────────────────────────────────────────
 
 export const VentaDetailView = () => {
@@ -419,10 +484,15 @@ export const VentaDetailView = () => {
   const [anularOpen, setAnularOpen] = useState(false)
   const [cotizacionOpen, setCotizacionOpen] = useState(false)
   const [editandoFecha, setEditandoFecha] = useState(false)
+  const [tab, setTab] = useState<'cotizaciones' | 'solicitudes' | 'instalaciones'>('cotizaciones')
 
   const { data: venta, isLoading, isError } = useVenta(id)
   const { data: cotizaciones = [], isLoading: loadingCots } = useCotizaciones(id)
+  const { data: stubsData } = useStubsVenta(id)
+  const { data: actividad = [] } = useActividadVenta(id)
+  const stubs: SolicitudStub[] = stubsData?.data ?? []
   const { data: cliente } = useCliente(venta?.cliente_id ?? '')
+  const { data: productosData } = useProductos({ limit: 200, activo: true })
 
   const cambiarEstadoVenta = useCambiarEstadoVenta(id)
   const cambiarEstadoCot   = useCambiarEstadoCotizacion(id)
@@ -451,21 +521,25 @@ export const VentaDetailView = () => {
     )
   }
 
-  // Suma de todas las cotizaciones activas (excluye RECHAZADA y VENCIDA)
+  // Cotización aceptada (solo puede haber una)
+  const cotizacionAceptada = cotizaciones.find(c => c.estado === 'ACEPTADA') ?? null
+
+  // Si no hay aceptada, suma las activas (BORRADOR + ENVIADA) como referencia
   const montoTotalActivas = cotizaciones
     .filter(c => !['RECHAZADA', 'VENCIDA'].includes(c.estado))
     .reduce((sum, c) => sum + Number(c.monto_total), 0)
 
-  // Suma solo de cotizaciones ACEPTADAS
-  const montoTotalAceptadas = cotizaciones
-    .filter(c => c.estado === 'ACEPTADA')
-    .reduce((sum, c) => sum + Number(c.monto_total), 0)
-
-  // COTIZACION_ENVIADA se activa automáticamente al enviar email — no se expone como botón manual
-  const transicionesDisponibles = TRANSICIONES_VENTA[venta.estado].filter(e => e !== 'ANULADA' && e !== 'COTIZACION_ENVIADA')
+  // COTIZACION_ENVIADA se activa automáticamente al enviar email.
+  // Se expone como botón manual solo si la venta está en CONSULTA_ABIERTA y ya hay una cotización ENVIADA.
+  const hayCotEnviada = cotizaciones.some(c => c.estado === 'ENVIADA')
+  const transicionesDisponibles = (TRANSICIONES_VENTA[venta.estado] ?? []).filter(e => {
+    if (e === 'ANULADA') return false
+    if (e === 'COTIZACION_ENVIADA') return hayCotEnviada
+    return true
+  })
   const puedeAnular = venta.estado !== 'CERRADA' && venta.estado !== 'ANULADA'
-  const hayAceptada = cotizaciones.some(c => c.estado === 'ACEPTADA')
-  const puedeCrearCot = venta.estado !== 'CERRADA' && venta.estado !== 'ANULADA'
+  const hayAceptada = cotizacionAceptada !== null
+  const puedeCrearCot = venta.estado === 'CONSULTA_ABIERTA' && !hayAceptada
 
   const handleTransicion = (estado: EstadoVenta) => {
     cambiarEstadoVenta.mutate({ estado })
@@ -486,14 +560,17 @@ export const VentaDetailView = () => {
     try {
       const newCot = await crearCotizacion.mutateAsync(data)
       if (data.requiere_cubicacion && newCot?.id) {
-        await ventasApi.agregarLinea(newCot.id, {
-          descripcion: 'Visita técnica / Medición en obra',
-          producto_id: PRODUCTOS_FAKE_MODE ? null : undefined,
-          cantidad: 1,
-          precio_unitario: 25000,
-          descuento_pct: 0,
-          unidad_medida: 'hora',
-        })
+        const prodCubicacion = productosData?.data?.find(p => p.codigo === 'SRV-001')
+        if (prodCubicacion) {
+          await ventasApi.agregarLinea(newCot.id, {
+            producto_id: prodCubicacion.id,
+            descripcion: prodCubicacion.nombre,
+            cantidad: 1,
+            precio_unitario: Number(prodCubicacion.precio_base),
+            descuento_pct: 0,
+            unidad_medida: prodCubicacion.unidad_medida,
+          })
+        }
         queryClient.invalidateQueries({ queryKey: ventasKeys.cotizaciones(id) })
       }
     } catch { /* errores manejados por toast en el hook */ }
@@ -535,49 +612,138 @@ export const VentaDetailView = () => {
       {/* Dos columnas */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
 
-        {/* ── Izquierda: cotizaciones ── */}
+        {/* ── Izquierda: tabs ── */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold text-text-primary">
-              Cotizaciones
-              <span className="ml-2 text-sm text-text-disabled font-normal">({cotizaciones.length})</span>
-            </h2>
-            {puedeCrearCot && (
-              <Button size="sm" onClick={() => setCotizacionOpen(true)}>+ Nueva cotización</Button>
-            )}
-            {hayAceptada && (
-              <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full font-medium">
-                ✓ Cotización aceptada
-              </span>
-            )}
+
+          {/* Tab bar */}
+          <div className="flex items-center gap-1 border-b border-surface-border">
+            {([
+              { key: 'cotizaciones',  label: 'Cotizaciones',  count: cotizaciones.length },
+              { key: 'solicitudes',   label: 'Solicitudes',   count: stubs.length },
+              { key: 'instalaciones', label: 'Instalaciones', count: 0 },
+            ] as const).map(({ key, label, count }) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={[
+                  'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+                  tab === key
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-text-secondary hover:text-text-primary',
+                ].join(' ')}
+              >
+                {label}
+                {count > 0 && (
+                  <span className={[
+                    'ml-1.5 text-xs px-1.5 py-0.5 rounded-full font-normal',
+                    tab === key ? 'bg-primary/10 text-primary' : 'bg-surface-subtle text-text-disabled',
+                  ].join(' ')}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
 
-          {loadingCots ? (
-            <div className="space-y-3 animate-pulse">
-              {[1, 2].map(i => <div key={i} className="h-40 bg-surface-subtle rounded-xl" />)}
-            </div>
-          ) : cotizaciones.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-surface-border p-10 text-center bg-white">
-              <p className="text-text-secondary text-sm mb-4">No hay cotizaciones aún.</p>
-              {puedeCrearCot && (
-                <Button size="sm" onClick={() => setCotizacionOpen(true)}>
-                  Crear primera cotización
-                </Button>
+          {/* ── Tab: Cotizaciones ── */}
+          {tab === 'cotizaciones' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 shrink-0 ml-auto">
+                  {venta.estado === 'COTIZACION_ENVIADA' && (
+                    <span className="text-xs text-text-disabled italic hidden sm:inline">
+                      Reabre como consulta para crear una nueva
+                    </span>
+                  )}
+                  {venta.estado === 'CONSULTA_ABIERTA' && hayAceptada && (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      loading={cambiarEstadoVenta.isPending}
+                      onClick={() => handleTransicion('VENTA_GENERADA')}
+                    >
+                      Confirmar venta
+                    </Button>
+                  )}
+                  {puedeCrearCot && (
+                    <Button size="sm" onClick={() => setCotizacionOpen(true)}>+ Nueva cotización</Button>
+                  )}
+                </div>
+              </div>
+
+              {loadingCots ? (
+                <div className="space-y-3 animate-pulse">
+                  {[1, 2].map(i => <div key={i} className="h-40 bg-surface-subtle rounded-xl" />)}
+                </div>
+              ) : cotizaciones.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-surface-border p-10 text-center bg-white">
+                  <p className="text-text-secondary text-sm mb-4">No hay cotizaciones aún.</p>
+                  {puedeCrearCot && (
+                    <Button size="sm" onClick={() => setCotizacionOpen(true)}>
+                      Crear primera cotización
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                cotizaciones.map(cot => (
+                  <CotizacionCard
+                    key={cot.id}
+                    cotizacion={cot}
+                    ventaId={id}
+                    clienteEmail={cliente?.email ?? ''}
+                    ventaEstado={venta.estado}
+                    hayAceptada={hayAceptada}
+                    onEstadoCot={handleCotEstado}
+                    onEstadoVenta={handleTransicion}
+                    pendingEstadoCot={cambiarEstadoCot.isPending}
+                  />
+                ))
               )}
             </div>
-          ) : (
-            cotizaciones.map(cot => (
-              <CotizacionCard
-                key={cot.id}
-                cotizacion={cot}
-                ventaId={id}
-                clienteEmail={cliente?.email ?? ''}
-                ventaEstado={venta.estado}
-                onEstadoCot={handleCotEstado}
-                onEstadoVenta={handleTransicion}
-                pendingEstadoCot={cambiarEstadoCot.isPending}
-              />
-            ))
+          )}
+
+          {/* ── Tab: Solicitudes ── */}
+          {tab === 'solicitudes' && (
+            <div className="space-y-3">
+              {stubs.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-surface-border p-10 text-center bg-white">
+                  <p className="text-text-secondary text-sm">No hay solicitudes generadas aún.</p>
+                  <p className="text-xs text-text-disabled mt-1">Se crean automáticamente al confirmar la venta.</p>
+                </div>
+              ) : (
+                stubs.map(stub => (
+                  <div key={stub.id} className="rounded-xl border border-surface-border bg-white shadow-sm p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-sm font-semibold text-text-primary">{stub.codigo}</span>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STUB_TIPO_COLOR[stub.tipo] ?? 'bg-surface-subtle text-text-secondary'}`}>
+                          {STUB_TIPO_LABEL[stub.tipo] ?? stub.tipo}
+                        </span>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STUB_ESTADO_COLOR[stub.estado] ?? 'bg-surface-subtle text-text-secondary'}`}>
+                          {ESTADO_STUB_LABEL[stub.estado as keyof typeof ESTADO_STUB_LABEL] ?? stub.estado}
+                        </span>
+                      </div>
+                      {stub.fecha_limite && (
+                        <span className="text-xs text-text-disabled shrink-0">
+                          Límite: {fmtDate(stub.fecha_limite)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-text-secondary mt-2">{stub.descripcion}</p>
+                    {stub.respuesta && (
+                      <p className="text-xs text-text-disabled mt-1 italic">Respuesta: {stub.respuesta}</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ── Tab: Instalaciones (stub Fase 1B) ── */}
+          {tab === 'instalaciones' && (
+            <div className="rounded-xl border border-dashed border-surface-border p-10 text-center bg-white">
+              <p className="text-text-secondary text-sm">Módulo de instalaciones disponible en Fase 1B.</p>
+            </div>
           )}
         </div>
 
@@ -599,20 +765,23 @@ export const VentaDetailView = () => {
                 </div>
               )}
               <div className="flex justify-between gap-2 pt-1 border-t border-surface-border">
-                <dt className="text-text-secondary shrink-0">Total cotizaciones</dt>
-                <dd className="font-semibold text-text-primary font-mono tabular-nums">{fmt(montoTotalActivas)}</dd>
+                {cotizacionAceptada ? (
+                  <>
+                    <dt className="text-text-secondary shrink-0 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                      Cotización aceptada
+                    </dt>
+                    <dd className="font-semibold text-emerald-700 font-mono tabular-nums">{fmt(Number(cotizacionAceptada.monto_total))}</dd>
+                  </>
+                ) : (
+                  <>
+                    <dt className="text-text-secondary shrink-0">Cotizaciones activas</dt>
+                    <dd className="font-semibold text-text-primary font-mono tabular-nums">{fmt(montoTotalActivas)}</dd>
+                  </>
+                )}
               </div>
-              {montoTotalAceptadas > 0 && (
-                <div className="flex justify-between gap-2">
-                  <dt className="text-text-secondary shrink-0 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                    Total cotizaciones aceptadas
-                  </dt>
-                  <dd className="font-semibold text-emerald-700 font-mono tabular-nums">{fmt(montoTotalAceptadas)}</dd>
-                </div>
-              )}
               <div className="flex justify-between gap-2">
-                <dt className="text-text-secondary shrink-0">Venta creada el día</dt>
+                <dt className="text-text-secondary shrink-0">Fecha Creación</dt>
                 <dd className="text-text-primary">{fmtDate(venta.created_at)}</dd>
               </div>
 
@@ -670,22 +839,83 @@ export const VentaDetailView = () => {
             <div className="rounded-xl border border-surface-border bg-white shadow-sm p-5 space-y-3">
               <h3 className="text-xs font-semibold text-text-disabled uppercase tracking-wide">Avanzar estado</h3>
               <div className="flex flex-col gap-2">
-                {transicionesDisponibles.map(estado => (
-                  <span key={estado} className="inline-flex items-center gap-1">
-                    <Button
-                      variant={estado === 'CONSULTA_ABIERTA' ? 'outline' : 'primary'}
-                      loading={cambiarEstadoVenta.isPending}
-                      onClick={() => handleTransicion(estado)}
-                      className="w-full justify-center"
-                    >
-                      {TRANSICION_LABEL[estado] ?? ESTADO_VENTA_LABEL[estado]}
-                    </Button>
-                    {TRANSICION_TOOLTIP[estado] && <Tooltip text={TRANSICION_TOOLTIP[estado]!} />}
-                  </span>
-                ))}
+                {transicionesDisponibles.map(estado => {
+                  const requiereAceptada = estado === 'VENTA_GENERADA'
+                  const deshabilitado = requiereAceptada && !hayAceptada
+                  const tooltip = deshabilitado
+                    ? 'Debes tener al menos una cotización aceptada para confirmar la venta.'
+                    : TRANSICION_TOOLTIP[estado]
+                  return (
+                    <span key={estado} className="inline-flex items-center gap-1">
+                      <Button
+                        variant={estado === 'CONSULTA_ABIERTA' ? 'outline' : 'primary'}
+                        loading={cambiarEstadoVenta.isPending}
+                        disabled={deshabilitado}
+                        onClick={() => handleTransicion(estado)}
+                        className="w-full justify-center"
+                      >
+                        {TRANSICION_LABEL[estado] ?? ESTADO_VENTA_LABEL[estado]}
+                      </Button>
+                      {tooltip && <Tooltip text={tooltip} />}
+                    </span>
+                  )
+                })}
               </div>
             </div>
           )}
+
+          {/* Timeline de actividad */}
+          {(() => {
+            const totalMs = actividad.length >= 2
+              ? new Date(actividad[0].created_at).getTime() - new Date(actividad[actividad.length - 1].created_at).getTime()
+              : null
+            return (
+              <div className="rounded-xl border border-surface-border bg-white shadow-sm p-5 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold text-text-disabled uppercase tracking-wide">Actividad</h3>
+                  {totalMs !== null && (
+                    <span className="text-[11px] text-text-disabled bg-surface-muted px-2 py-0.5 rounded-full">
+                      Duración total: {fmtDuration(totalMs)}
+                    </span>
+                  )}
+                </div>
+                {actividad.length === 0 ? (
+                  <p className="text-xs text-text-disabled italic">Sin actividad registrada.</p>
+                ) : (
+                  <ol className="space-y-3">
+                    {actividad.map((item, idx) => {
+                      const nextItem = actividad[idx + 1]
+                      const duracionMs = nextItem
+                        ? new Date(item.created_at).getTime() - new Date(nextItem.created_at).getTime()
+                        : null
+                      return (
+                        <li key={item.id} className="flex gap-3">
+                          <div className="flex flex-col items-center">
+                            <span className="w-2 h-2 rounded-full bg-primary/40 mt-1 shrink-0" />
+                            <span className="w-px flex-1 bg-surface-border mt-1" />
+                          </div>
+                          <div className="pb-3 min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-xs text-text-primary leading-snug">{buildActividadTexto(item)}</p>
+                              {duracionMs !== null && (
+                                <span className="text-[10px] text-text-disabled bg-surface-muted px-1.5 py-0.5 rounded shrink-0 tabular-nums">
+                                  {fmtDuration(duracionMs)}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-text-disabled mt-0.5">
+                              {fmtDate(item.created_at)} · {fmtTime(item.created_at)}
+                              <span className="ml-1 text-text-disabled/70">· {item.user_nombre ?? 'Sistema'}</span>
+                            </p>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ol>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Anulación info */}
           {venta.estado === 'ANULADA' && (

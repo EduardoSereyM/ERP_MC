@@ -60,6 +60,7 @@ def obtener_cliente_por_rut(db: Session, rut: str) -> Cliente | None:
 
 def crear_cliente(db: Session, data: ClienteCreate, user_id: UUID) -> Cliente:
     from fastapi import HTTPException
+    from sqlalchemy.exc import IntegrityError
     if obtener_cliente_por_rut(db, data.rut):
         raise HTTPException(status_code=409, detail="Ya existe un cliente con ese RUT")
     codigo = _siguiente_codigo_cliente(db)
@@ -71,7 +72,11 @@ def crear_cliente(db: Session, data: ClienteCreate, user_id: UUID) -> Cliente:
         **data.model_dump(),
     )
     db.add(cliente)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe un cliente con ese RUT")
     return cliente
 
 

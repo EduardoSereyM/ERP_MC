@@ -18,6 +18,14 @@ RolFuncional = Literal[
 NivelJerarquico = Literal["director", "gerencia", "jefatura", "supervisor", "usuario"]
 
 
+class UsuarioCreate(BaseModel):
+    email: EmailStr
+    password: SecretStr = Field(min_length=8)
+    nombre: str = Field(min_length=2, max_length=200)
+    rol_funcional: RolFuncional
+    nivel_jerarquico: NivelJerarquico
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: SecretStr = Field(min_length=6)

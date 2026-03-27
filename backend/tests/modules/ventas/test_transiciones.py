@@ -17,26 +17,26 @@ from app.modules.ventas.service import (
 
 TRANSICIONES_VENTA_VALIDAS = [
     ("CONSULTA_ABIERTA", "COTIZACION_ENVIADA"),
+    ("CONSULTA_ABIERTA", "VENTA_GENERADA"),
     ("CONSULTA_ABIERTA", "ANULADA"),
     ("COTIZACION_ENVIADA", "VENTA_GENERADA"),
     ("COTIZACION_ENVIADA", "CONSULTA_ABIERTA"),
     ("COTIZACION_ENVIADA", "ANULADA"),
-    ("VENTA_GENERADA", "EN_PROCESO"),
+    ("VENTA_GENERADA", "CERRADA"),
     ("VENTA_GENERADA", "ANULADA"),
-    ("EN_PROCESO", "CERRADA"),
-    ("EN_PROCESO", "ANULADA"),
 ]
 
 TRANSICIONES_VENTA_INVALIDAS = [
-    ("CONSULTA_ABIERTA", "VENTA_GENERADA"),
-    ("CONSULTA_ABIERTA", "EN_PROCESO"),
     ("CONSULTA_ABIERTA", "CERRADA"),
     ("CERRADA", "CONSULTA_ABIERTA"),
     ("CERRADA", "ANULADA"),
+    ("CERRADA", "VENTA_GENERADA"),
     ("ANULADA", "CONSULTA_ABIERTA"),
     ("ANULADA", "CERRADA"),
-    ("EN_PROCESO", "CONSULTA_ABIERTA"),
+    ("ANULADA", "VENTA_GENERADA"),
     ("VENTA_GENERADA", "COTIZACION_ENVIADA"),
+    ("VENTA_GENERADA", "CONSULTA_ABIERTA"),
+    ("COTIZACION_ENVIADA", "CERRADA"),
 ]
 
 
@@ -61,8 +61,13 @@ def test_venta_estados_terminales_sin_salida():
 
 def test_venta_todos_los_estados_definidos():
     """Cada estado del enum tiene una entrada en la tabla de transiciones."""
-    estados_esperados = {"CONSULTA_ABIERTA", "COTIZACION_ENVIADA", "VENTA_GENERADA", "EN_PROCESO", "CERRADA", "ANULADA"}
+    estados_esperados = {"CONSULTA_ABIERTA", "COTIZACION_ENVIADA", "VENTA_GENERADA", "CERRADA", "ANULADA"}
     assert set(TRANSICIONES_VENTA.keys()) == estados_esperados
+
+
+def test_venta_consulta_abierta_puede_ir_a_venta_generada():
+    """CONSULTA_ABIERTA puede saltar directamente a VENTA_GENERADA (sin pasar por COTIZACION_ENVIADA)."""
+    assert "VENTA_GENERADA" in TRANSICIONES_VENTA["CONSULTA_ABIERTA"]
 
 
 # ─── Cotizaciones: transiciones válidas ───────────────────────────────────────

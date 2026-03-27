@@ -2,13 +2,20 @@ export type EstadoVenta =
   | 'CONSULTA_ABIERTA'
   | 'COTIZACION_ENVIADA'
   | 'VENTA_GENERADA'
-  | 'EN_PROCESO'
   | 'CERRADA'
   | 'ANULADA'
 
+export type TipoVenta = 'suministro' | 'suministro_instalacion' | 'solo_instalacion'
+
+export const TIPO_VENTA_LABEL: Record<TipoVenta, string> = {
+  suministro:              'Solo materiales',
+  suministro_instalacion:  'Materiales + instalación',
+  solo_instalacion:        'Solo instalación',
+}
+
 export type EstadoCotizacion = 'BORRADOR' | 'ENVIADA' | 'ACEPTADA' | 'RECHAZADA' | 'VENCIDA'
 
-export type TipoStub = 'BOD' | 'COB' | 'CTB' | 'GER'
+export type TipoStub = 'BOD' | 'COB' | 'CTB' | 'GER' | 'INS'
 
 export type EstadoStub = 'PENDIENTE' | 'EN_REVISION' | 'COMPLETADA' | 'RECHAZADA'
 
@@ -22,9 +29,11 @@ export interface Venta {
   cliente_id: string
   vendedor_id: string
   estado: EstadoVenta
+  tipo: TipoVenta
   monto_total: number
   descuento_pct: number
   fecha_cierre_esperada: string | null
+  fecha_cierre: string | null
   fecha_anulacion: string | null
   motivo_anulacion: string | null
   notas: string | null
@@ -36,8 +45,11 @@ export interface VentaListItem {
   id: string
   codigo: string
   cliente_id: string
+  cliente_razon_social: string
+  cliente_rut: string
   vendedor_id: string
   estado: EstadoVenta
+  tipo: TipoVenta
   monto_total: number
   descuento_pct: number
   fecha_cierre_esperada: string | null
@@ -46,10 +58,12 @@ export interface VentaListItem {
 
 export interface VentaCreate {
   cliente_id: string
+  tipo?: TipoVenta
   notas?: string | null
 }
 
 export interface VentaUpdate {
+  tipo?: TipoVenta
   fecha_cierre_esperada?: string | null
   descuento_pct?: number
   notas?: string | null
@@ -65,8 +79,9 @@ export interface VentaCambioEstado {
 export interface LineaCotizacion {
   id: string
   cotizacion_id: string
-  producto_id: string | null
+  producto_id: string
   descripcion: string
+  es_servicio: boolean
   cantidad: number
   precio_unitario: number
   descuento_pct: number
@@ -77,13 +92,13 @@ export interface LineaCotizacion {
 }
 
 export interface LineaCotizacionCreate {
-  producto_id?: string | null
+  producto_id: string
   descripcion: string
   cantidad?: number
   precio_unitario?: number
   descuento_pct?: number
   orden?: number
-  /** Unidad de medida — se usa para display, el backend la ignora hasta Fase 1F */
+  /** Unidad de medida — se usa para display, el backend la ignora */
   unidad_medida?: string
 }
 
@@ -170,15 +185,28 @@ export interface StubCambioEstado {
   respuesta?: string | null
 }
 
+// ─── Actividad (timeline) ─────────────────────────────────────────────────────
+
+export interface ActividadItem {
+  id: string
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | string
+  entity_type: string
+  entity_id: string | null
+  entity_codigo: string | null
+  event_data: Record<string, unknown> | null
+  user_id: string | null
+  user_nombre: string | null
+  created_at: string
+}
+
 // ─── Labels para UI ───────────────────────────────────────────────────────────
 
 export const ESTADO_VENTA_LABEL: Record<EstadoVenta, string> = {
-  CONSULTA_ABIERTA:  'Consulta abierta',
+  CONSULTA_ABIERTA:   'Consulta abierta',
   COTIZACION_ENVIADA: 'Cotización enviada',
-  VENTA_GENERADA:    'Venta generada',
-  EN_PROCESO:        'En proceso',
-  CERRADA:           'Cerrada',
-  ANULADA:           'Anulada',
+  VENTA_GENERADA:     'Venta generada',
+  CERRADA:            'Cerrada',
+  ANULADA:            'Anulada',
 }
 
 export const ESTADO_COTIZACION_LABEL: Record<EstadoCotizacion, string> = {
@@ -200,8 +228,7 @@ export const ESTADO_STUB_LABEL: Record<EstadoStub, string> = {
 export const TRANSICIONES_VENTA: Record<EstadoVenta, EstadoVenta[]> = {
   CONSULTA_ABIERTA:   ['COTIZACION_ENVIADA', 'ANULADA'],
   COTIZACION_ENVIADA: ['VENTA_GENERADA', 'CONSULTA_ABIERTA', 'ANULADA'],
-  VENTA_GENERADA:     ['EN_PROCESO', 'ANULADA'],
-  EN_PROCESO:         ['CERRADA', 'ANULADA'],
+  VENTA_GENERADA:     ['ANULADA'],
   CERRADA:            [],
   ANULADA:            [],
 }

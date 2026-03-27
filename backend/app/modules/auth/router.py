@@ -4,12 +4,58 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.middleware import limiter
 from app.core.audit import log_audit
-from app.modules.auth.dependencies import get_current_user, CurrentUser
-from app.modules.auth.service import login_con_password, obtener_usuario_por_id, refresh_session
-from app.modules.auth.schemas import LoginRequest, RefreshRequest, TokenResponse, UsuarioResponse
+from app.modules.auth.dependencies import get_current_user, require_rol, CurrentUser
+from app.modules.auth.service import crear_usuario, eliminar_usuario, login_con_password, obtener_usuario_por_id, refresh_session
+from app.modules.auth.schemas import LoginRequest, RefreshRequest, TokenResponse, UsuarioCreate, UsuarioResponse
 from app.shared.responses import RespuestaSimple
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post(
+    "/usuarios",
+    response_model=RespuestaSimple[UsuarioResponse],
+    status_code=201,
+    summary="Crear usuario (solo admin)",
+)
+@limiter.limit("10/minute")
+def crear_usuario_endpoint(
+    request: Request,
+    payload: UsuarioCreate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_rol(["admin"])),
+):
+    from app.core.audit import log_audit
+    usuario = crear_usuario(
+        email=payload.email,
+        password=payload.password.get_secret_value(),
+        nombre=payload.nombre,
+        rol_funcional=payload.rol_funcional,
+        nivel_jerarquico=payload.nivel_jerarquico,
+        db=db,
+    )
+    db.commit()
+    db.refresh(usuario)
+    log_audit(db, "CREATE", "usuarios", current_user.id, usuario.id, request=request)
+    return RespuestaSimple(data=UsuarioResponse.model_validate(usuario))
+
+
+@router.delete(
+    "/usuarios/{usuario_id}",
+    status_code=204,
+    summary="Eliminar usuario (solo admin)",
+)
+@limiter.limit("10/minute")
+def eliminar_usuario_endpoint(
+    request: Request,
+    usuario_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(require_rol(["admin"])),
+):
+    from app.core.audit import log_audit
+    eliminar_usuario(usuario_id, db)
+    db.commit()
+    log_audit(db, "DELETE", "usuarios", current_user.id, request=request)
 
 
 @router.post(

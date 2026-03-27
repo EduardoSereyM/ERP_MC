@@ -49,7 +49,7 @@ def listar_ventas(
 ):
     rows, total = svc.listar_ventas(db, params, vendedor_id=vendedor_id, cliente_id=cliente_id, estado=estado, busqueda=busqueda)
     return RespuestaPaginada(
-        data=[VentaListItem.model_validate(r) for r in rows],
+        data=[VentaListItem.model_validate(r, from_attributes=False) for r in rows],
         meta=make_paginacion_meta(total, params),
     )
 
@@ -308,6 +308,21 @@ def eliminar_linea(
     log_audit(db, "DELETE", "lineas_cotizacion", current_user.id, linea_id, request=request)
 
 
+# ─── Actividad (timeline) ─────────────────────────────────────────────────────
+
+@router.get("/{venta_id}/actividad", response_model=RespuestaSimple[list[dict]])
+@limiter.limit("60/minute")
+def listar_actividad_venta(
+    request: Request,
+    venta: Venta = Depends(get_venta_or_404),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    items = svc.listar_actividad_venta(db, venta.id, limit=limit)
+    return RespuestaSimple(data=items)
+
+
 # ─── Stubs ────────────────────────────────────────────────────────────────────
 
 @stubs_router.get("", response_model=RespuestaPaginada[StubResponse])
@@ -317,11 +332,12 @@ def listar_stubs(
     tipo: str | None = Query(None),
     estado: str | None = Query(None),
     cliente_id: UUID | None = Query(None),
+    venta_id: UUID | None = Query(None),
     params: PaginacionParams = Depends(),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    rows, total = svc.listar_stubs(db, params, tipo=tipo, estado=estado, cliente_id=cliente_id)
+    rows, total = svc.listar_stubs(db, params, tipo=tipo, estado=estado, cliente_id=cliente_id, venta_id=venta_id)
     return RespuestaPaginada(
         data=[StubResponse.model_validate(r) for r in rows],
         meta=make_paginacion_meta(total, params),

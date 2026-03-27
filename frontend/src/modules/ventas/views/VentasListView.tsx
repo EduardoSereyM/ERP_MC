@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useVentas } from '../hooks/useVentas'
 import { VentaForm } from '../components/VentaForm'
 import { Modal, Badge } from '@/shared/components/ui'
-import { ESTADO_VENTA_LABEL } from '../types'
+import { ESTADO_VENTA_LABEL, TIPO_VENTA_LABEL } from '../types'
 import type { VentaListItem, EstadoVenta } from '../types'
 import { useMe } from '@/modules/auth/hooks/useMe'
 
@@ -297,9 +297,10 @@ export const VentasListView = () => {
               <thead>
                 <tr className="bg-surface-muted border-b border-surface-border">
                   <th className="text-left px-6 py-3 text-text-secondary text-xs font-medium uppercase tracking-wider">Código</th>
+                  <th className="text-left px-6 py-3 text-text-secondary text-xs font-medium uppercase tracking-wider">Cliente</th>
+                  <th className="text-left px-6 py-3 text-text-secondary text-xs font-medium uppercase tracking-wider">Tipo</th>
                   <th className="text-left px-6 py-3 text-text-secondary text-xs font-medium uppercase tracking-wider">Estado</th>
                   <th className="text-right px-6 py-3 text-text-secondary text-xs font-medium uppercase tracking-wider">Monto total</th>
-                  <th className="text-left px-6 py-3 text-text-secondary text-xs font-medium uppercase tracking-wider">Descuento</th>
                   <th className="text-left px-6 py-3 text-text-secondary text-xs font-medium uppercase tracking-wider">Cierre esperado</th>
                   <th className="text-left px-6 py-3 text-text-secondary text-xs font-medium uppercase tracking-wider">Creada</th>
                 </tr>
@@ -311,22 +312,31 @@ export const VentasListView = () => {
                     onClick={() => navigate(`/ventas/${venta.id}`)}
                     className="hover:bg-surface-muted transition-colors cursor-pointer"
                   >
-                    <td className="px-6 py-4 text-sm font-mono text-primary font-medium">{venta.codigo}</td>
+                    <td className="px-6 py-4 text-sm font-mono text-primary font-semibold whitespace-nowrap">
+                      {venta.codigo}
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-sm font-medium text-text-primary leading-tight">{venta.cliente_razon_social}</p>
+                      <p className="text-xs text-text-disabled mt-0.5">{venta.cliente_rut}</p>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-text-secondary whitespace-nowrap">
+                      {TIPO_VENTA_LABEL[venta.tipo]}
+                    </td>
                     <td className="px-6 py-4">
                       <Badge variant={VENTA_BADGE[venta.estado]}>
                         {ESTADO_VENTA_LABEL[venta.estado]}
                       </Badge>
                     </td>
-                    <td className="px-6 py-4 text-sm text-text-primary font-bold text-right font-mono">
+                    <td className="px-6 py-4 text-sm font-semibold text-text-primary text-right font-mono whitespace-nowrap">
                       ${Number(venta.monto_total).toLocaleString('es-CL')}
                     </td>
-                    <td className="px-6 py-4 text-sm text-text-secondary">
-                      {Number(venta.descuento_pct) > 0 ? `${venta.descuento_pct}%` : '—'}
+                    <td className="px-6 py-4 text-sm text-text-secondary whitespace-nowrap">
+                      {venta.fecha_cierre_esperada
+                        ? new Date(venta.fecha_cierre_esperada).toLocaleDateString('es-CL')
+                        : <span className="text-text-disabled">—</span>
+                      }
                     </td>
-                    <td className="px-6 py-4 text-sm text-text-secondary">
-                      {venta.fecha_cierre_esperada ?? '—'}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-text-secondary">
+                    <td className="px-6 py-4 text-sm text-text-secondary whitespace-nowrap">
                       {new Date(venta.created_at).toLocaleDateString('es-CL')}
                     </td>
                   </tr>

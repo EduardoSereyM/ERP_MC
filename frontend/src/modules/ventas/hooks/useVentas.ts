@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as ventasApi from '../api'
 import { ventasKeys, stubsKeys } from '../queryKeys'
+import type { ActividadItem } from '../types'
 import type {
   CotizacionCambioEstado,
   CotizacionCreate,
@@ -58,15 +59,26 @@ export function useActualizarVenta(id: string) {
   })
 }
 
+const _STUBS_NOTIFICADOS: Record<string, string> = {
+  suministro:             'Cobranza · Bodega (si hay materiales)',
+  suministro_instalacion: 'Cobranza · Bodega (si hay materiales) · Instalaciones',
+  solo_instalacion:       'Cobranza · Instalaciones',
+}
+
 export function useCambiarEstadoVenta(id: string) {
   const queryClient = useQueryClient()
-  const { success, error } = useToast()
+  const { success, error, info } = useToast()
   return useMutation({
     mutationFn: (payload: VentaCambioEstado) => ventasApi.cambiarEstadoVenta(id, payload),
     onSuccess: (data) => {
       success('Estado de venta actualizado')
+      if (data.estado === 'VENTA_GENERADA') {
+        const areas = _STUBS_NOTIFICADOS[data.tipo] ?? 'Cobranza'
+        info(`Solicitudes creadas para: ${areas}`)
+      }
       queryClient.setQueryData(ventasKeys.detail(id), data)
       queryClient.invalidateQueries({ queryKey: ventasKeys.lists() })
+      queryClient.invalidateQueries({ queryKey: ventasKeys.stubs(id) })
     },
     onError: () => error('Error al cambiar estado'),
   })
@@ -180,5 +192,26 @@ export function useCambiarEstadoStub() {
       queryClient.invalidateQueries({ queryKey: stubsKeys.lists() })
       queryClient.invalidateQueries({ queryKey: stubsKeys.detail(stubId) })
     },
+  })
+}
+
+// ─── Stubs por venta ──────────────────────────────────────────────────────────
+
+export function useStubsVenta(ventaId: string) {
+  return useQuery({
+    queryKey: ventasKeys.stubs(ventaId),
+    queryFn: () => ventasApi.listarStubs({ venta_id: ventaId, limit: 50 }),
+    enabled: !!ventaId,
+  })
+}
+
+// ─── Actividad (timeline) ─────────────────────────────────────────────────────
+
+export function useActividadVenta(ventaId: string): ReturnType<typeof useQuery<ActividadItem[]>> {
+  return useQuery<ActividadItem[]>({
+    queryKey: ventasKeys.actividad(ventaId),
+    queryFn: () => ventasApi.listarActividadVenta(ventaId),
+    enabled: !!ventaId,
+    staleTime: 30_000,
   })
 }

@@ -7,6 +7,68 @@ from app.core.logger import logger
 from app.modules.auth.models import Usuario
 
 
+def crear_usuario(email: str, password: str, nombre: str, rol_funcional: str, nivel_jerarquico: str, db: Session) -> Usuario:
+    """
+    Crea un usuario en Supabase Auth y actualiza el registro local.
+    El trigger on_auth_user_created crea automáticamente el registro en public.usuarios;
+    aquí lo completamos con los valores definitivos.
+    Solo para admins. Lanza HTTPException si el email ya existe.
+    """
+    supabase = crear_cliente_supabase_admin()
+
+    try:
+        resp = supabase.auth.admin.create_user({
+            "email": email,
+            "password": password,
+            "email_confirm": True,
+            "user_metadata": {
+                "nombre": nombre,
+                "rol_funcional": rol_funcional,
+                "nivel_jerarquico": nivel_jerarquico,
+            },
+        })
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "EMAIL_DUPLICADO", "message": f"El email ya está registrado: {exc}"},
+        )
+
+    user_id = resp.user.id
+
+    # El trigger handle_new_user ya insertó el registro; lo actualizamos con los valores exactos
+    db.expire_all()  # Refrescar caché de la sesión para ver el registro creado por el trigger
+    usuario = db.query(Usuario).filter(Usuario.id == user_id).first()
+    if not usuario:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "ERROR_LOCAL_DB", "message": "No se encontró el registro local del usuario creado"},
+        )
+
+    usuario.nombre = nombre
+    usuario.rol_funcional = rol_funcional
+    usuario.nivel_jerarquico = nivel_jerarquico
+    usuario.activo = True
+    db.flush()
+    return usuario
+
+
+def eliminar_usuario(user_id: str, db: Session) -> None:
+    """Elimina un usuario de Supabase Auth y hace soft-delete en la tabla local."""
+    supabase = crear_cliente_supabase_admin()
+    try:
+        supabase.auth.admin.delete_user(user_id)
+    except Exception:
+        pass  # Si ya no existe en Supabase, continuar con soft-delete local
+
+    from datetime import datetime, timezone
+    usuario = db.query(Usuario).filter(Usuario.id == user_id).first()
+    if usuario:
+        usuario.is_deleted = True
+        usuario.deleted_at = datetime.now(timezone.utc)
+        usuario.activo = False
+        db.flush()
+
+
 def obtener_usuario_por_id(user_id: str, db: Session) -> Usuario:
     """Obtiene un usuario activo por su ID. Lanza 404 si no existe."""
     usuario = (

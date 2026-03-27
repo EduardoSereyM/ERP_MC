@@ -3,7 +3,10 @@ import { Button, Modal, ClienteCombobox } from '@/shared/components/ui'
 import { useCrearVenta } from '@/modules/ventas'
 import { ClienteForm } from '@/modules/clientes'
 import type { Cliente } from '@/modules/clientes'
-import type { VentaCreate } from '../types'
+import type { TipoVenta, VentaCreate } from '../types'
+import { TIPO_VENTA_LABEL } from '../types'
+
+const TIPOS_VENTA: TipoVenta[] = ['suministro', 'suministro_instalacion', 'solo_instalacion']
 
 interface VentaFormProps {
   onSuccess: () => void
@@ -13,6 +16,7 @@ interface VentaFormProps {
 export const VentaForm = ({ onSuccess, onCancel }: VentaFormProps) => {
   const [form, setForm] = useState<VentaCreate>({
     cliente_id: '',
+    tipo: 'suministro',
     notas: '',
   })
   const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false)
@@ -69,6 +73,21 @@ export const VentaForm = ({ onSuccess, onCancel }: VentaFormProps) => {
           >
             + Nuevo
           </Button>
+        </div>
+
+        {/* Tipo de venta */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="venta-tipo" className="text-sm font-medium text-text-primary">Tipo de venta</label>
+          <select
+            id="venta-tipo"
+            value={form.tipo}
+            onChange={e => setForm(f => ({ ...f, tipo: e.target.value as TipoVenta }))}
+            className="rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            {TIPOS_VENTA.map(t => (
+              <option key={t} value={t}>{TIPO_VENTA_LABEL[t]}</option>
+            ))}
+          </select>
         </div>
 
         <div className="flex flex-col gap-1">

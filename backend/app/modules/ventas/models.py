@@ -9,9 +9,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
 
-EstadoVenta = str  # CONSULTA_ABIERTA | COTIZACION_ENVIADA | VENTA_GENERADA | EN_PROCESO | CERRADA | ANULADA
+EstadoVenta = str  # CONSULTA_ABIERTA | COTIZACION_ENVIADA | VENTA_GENERADA | CERRADA | ANULADA
 EstadoCotizacion = str  # BORRADOR | ENVIADA | ACEPTADA | RECHAZADA | VENCIDA
-TipoStub = str  # BOD | COB | CTB | GER
+TipoStub = str  # BOD | COB | CTB | GER | INS
 EstadoStub = str  # PENDIENTE | EN_REVISION | COMPLETADA | RECHAZADA
 
 
@@ -27,7 +27,9 @@ class Venta(Base):
     monto_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
     descuento_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
 
+    tipo: Mapped[str] = mapped_column(String(30), nullable=False, default="suministro")
     fecha_cierre_esperada: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fecha_cierre: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     fecha_anulacion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     motivo_anulacion: Mapped[str | None] = mapped_column(Text, nullable=True)
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -77,8 +79,9 @@ class LineaCotizacion(Base):
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
     cotizacion_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
-    producto_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    producto_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
+    es_servicio: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     cantidad: Mapped[Decimal] = mapped_column(Numeric(10, 3), nullable=False, default=1)
     precio_unitario: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
     descuento_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)

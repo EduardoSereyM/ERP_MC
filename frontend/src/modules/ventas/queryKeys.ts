@@ -5,6 +5,8 @@ export const ventasKeys = {
   details: () => [...ventasKeys.all, 'detail'] as const,
   detail: (id: string) => [...ventasKeys.details(), id] as const,
   cotizaciones: (ventaId: string) => [...ventasKeys.detail(ventaId), 'cotizaciones'] as const,
+  stubs: (ventaId: string) => [...ventasKeys.detail(ventaId), 'stubs'] as const,
+  actividad: (ventaId: string) => [...ventasKeys.detail(ventaId), 'actividad'] as const,
 }
 
 export const stubsKeys = {

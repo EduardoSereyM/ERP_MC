@@ -1,6 +1,27 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
+
+
+def _sumar_dias_habiles(base: datetime, dias: int) -> datetime:
+    """Suma N días hábiles (lun–vie) a una fecha base."""
+    resultado = base
+    agregados = 0
+    while agregados < dias:
+        resultado += timedelta(days=1)
+        if resultado.weekday() < 5:  # 0=lunes … 4=viernes
+            agregados += 1
+    return resultado
+
+
+# SLA por tipo de stub (días hábiles)
+_SLA_DIAS_HABILES: dict[str, int] = {
+    "BOD": 6,   # 48 h hábiles ÷ 8 h/día
+    "CTB": 6,
+    "COB": 3,   # 24 h hábiles ÷ 8 h/día
+    "GER": 3,
+    "INS": 15,  # 3 semanas hábiles
+}
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
@@ -23,10 +44,9 @@ from app.shared.secuencias import siguiente_codigo
 # ─── Transiciones válidas de estado ───────────────────────────────────────────
 
 TRANSICIONES_VENTA: dict[str, list[str]] = {
-    "CONSULTA_ABIERTA":   ["COTIZACION_ENVIADA", "ANULADA"],
+    "CONSULTA_ABIERTA":   ["COTIZACION_ENVIADA", "VENTA_GENERADA", "ANULADA"],
     "COTIZACION_ENVIADA": ["VENTA_GENERADA", "CONSULTA_ABIERTA", "ANULADA"],
-    "VENTA_GENERADA":     ["EN_PROCESO", "ANULADA"],
-    "EN_PROCESO":         ["CERRADA", "ANULADA"],
+    "VENTA_GENERADA":     ["CERRADA", "ANULADA"],
     "CERRADA":            [],
     "ANULADA":            [],
 }
@@ -65,8 +85,18 @@ def listar_ventas(
     cliente_id: UUID | None = None,
     estado: str | None = None,
     busqueda: str | None = None,
-) -> tuple[list[Venta], int]:
-    q = select(Venta).where(Venta.is_deleted == False)
+) -> tuple[list[dict], int]:
+    from app.modules.clientes.models import Cliente
+
+    q = (
+        select(
+            Venta,
+            Cliente.razon_social.label("cliente_razon_social"),
+            Cliente.rut.label("cliente_rut"),
+        )
+        .join(Cliente, Venta.cliente_id == Cliente.id)
+        .where(Venta.is_deleted == False)
+    )
     if vendedor_id:
         q = q.where(Venta.vendedor_id == vendedor_id)
     if cliente_id:
@@ -74,18 +104,14 @@ def listar_ventas(
     if estado:
         q = q.where(Venta.estado == estado)
     if busqueda:
-        from app.modules.clientes.models import Cliente
-        clientes_rut = select(Cliente.id).where(
-            Cliente.rut.ilike(f"%{busqueda}%"),
-            Cliente.is_deleted == False,
-        )
         ventas_con_cotizacion = select(Cotizacion.venta_id).where(
             Cotizacion.codigo.ilike(f"%{busqueda}%"),
         )
         q = q.where(
             or_(
                 Venta.codigo.ilike(f"%{busqueda}%"),
-                Venta.cliente_id.in_(clientes_rut),
+                Cliente.rut.ilike(f"%{busqueda}%"),
+                Cliente.razon_social.ilike(f"%{busqueda}%"),
                 Venta.id.in_(ventas_con_cotizacion),
             )
         )
@@ -95,7 +121,16 @@ def listar_ventas(
     if params.direccion == "desc":
         col = col.desc()
     q = q.order_by(col).offset(params.offset).limit(params.limit)
-    return list(db.execute(q).scalars().all()), total
+
+    rows = db.execute(q).all()
+    result = []
+    for row in rows:
+        venta = row.Venta
+        d = {c.key: getattr(venta, c.key) for c in Venta.__table__.columns}
+        d["cliente_razon_social"] = row.cliente_razon_social
+        d["cliente_rut"] = row.cliente_rut
+        result.append(d)
+    return result, total
 
 
 def obtener_venta(db: Session, venta_id: UUID) -> Venta | None:
@@ -128,11 +163,137 @@ def actualizar_venta(db: Session, venta: Venta, data: VentaUpdate, user_id: UUID
     return venta
 
 
+def _crear_stubs_confirmacion(db: Session, venta: Venta, cotizacion: Cotizacion, user_id: UUID) -> None:
+    """Crea los stubs necesarios al confirmar una venta según su tipo:
+    - BOD: si el tipo incluye suministro Y hay productos físicos
+    - COB: siempre
+    - INS: si el tipo incluye instalación
+    """
+    from app.modules.productos.models import Producto
+
+    ahora = datetime.now(timezone.utc)
+    monto_fmt = f"${int(cotizacion.monto_total):,}".replace(",", ".")
+    desc_base = f"{venta.codigo} / {cotizacion.codigo} – {monto_fmt}"
+
+    incluye_suministro  = venta.tipo in ("suministro", "suministro_instalacion")
+    incluye_instalacion = venta.tipo in ("suministro_instalacion", "solo_instalacion")
+
+    # BOD: solo si incluye suministro y hay al menos un producto físico
+    if incluye_suministro:
+        hay_producto_fisico = db.execute(
+            select(LineaCotizacion.id)
+            .join(Producto, LineaCotizacion.producto_id == Producto.id)
+            .where(
+                LineaCotizacion.cotizacion_id == cotizacion.id,
+                LineaCotizacion.is_deleted == False,
+                Producto.tipo_producto == "PRODUCTO_FISICO",
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+
+        if hay_producto_fisico:
+            db.add(SolicitudStub(
+                id=uuid4(),
+                codigo=siguiente_codigo(db, "bod"),
+                tipo="BOD",
+                origen_modulo="ventas",
+                origen_id=venta.id,
+                cliente_id=venta.cliente_id,
+                venta_id=venta.id,
+                estado="PENDIENTE",
+                descripcion=f"Despacho {desc_base}",
+                fecha_limite=_sumar_dias_habiles(ahora, _SLA_DIAS_HABILES["BOD"]),
+                created_by=user_id,
+                updated_by=user_id,
+            ))
+            db.flush()
+
+    # COB: siempre
+    db.add(SolicitudStub(
+        id=uuid4(),
+        codigo=siguiente_codigo(db, "cob"),
+        tipo="COB",
+        origen_modulo="ventas",
+        origen_id=venta.id,
+        cliente_id=venta.cliente_id,
+        venta_id=venta.id,
+        estado="PENDIENTE",
+        descripcion=f"Cobranza {desc_base}",
+        fecha_limite=_sumar_dias_habiles(ahora, _SLA_DIAS_HABILES["COB"]),
+        created_by=user_id,
+        updated_by=user_id,
+    ))
+    db.flush()
+
+    # INS: si incluye instalación
+    if incluye_instalacion:
+        db.add(SolicitudStub(
+            id=uuid4(),
+            codigo=siguiente_codigo(db, "ins"),
+            tipo="INS",
+            origen_modulo="ventas",
+            origen_id=venta.id,
+            cliente_id=venta.cliente_id,
+            venta_id=venta.id,
+            estado="PENDIENTE",
+            descripcion=f"Instalación {desc_base}",
+            fecha_limite=_sumar_dias_habiles(ahora, _SLA_DIAS_HABILES["INS"]),
+            created_by=user_id,
+            updated_by=user_id,
+        ))
+        db.flush()
+
+
+def _auto_cerrar_venta(db: Session, venta_id: UUID, user_id: UUID) -> None:
+    """Si todos los stubs de la venta están COMPLETADA, cierra la venta automáticamente."""
+    venta = db.execute(
+        select(Venta).where(Venta.id == venta_id, Venta.is_deleted == False)
+    ).scalar_one_or_none()
+
+    if not venta or venta.estado != "VENTA_GENERADA":
+        return
+
+    stubs = list(db.execute(
+        select(SolicitudStub).where(
+            SolicitudStub.venta_id == venta_id,
+            SolicitudStub.is_deleted == False,
+        )
+    ).scalars().all())
+
+    if not stubs:
+        return
+
+    if all(s.estado == "COMPLETADA" for s in stubs):
+        venta.estado = "CERRADA"
+        venta.fecha_cierre = datetime.now(timezone.utc)
+        venta.updated_by = user_id
+        db.flush()
+
+
 def cambiar_estado_venta(db: Session, venta: Venta, nuevo_estado: str, user_id: UUID, motivo: str | None = None) -> Venta:
     _validar_transicion(venta.estado, nuevo_estado, TRANSICIONES_VENTA, "venta")
+
+    if nuevo_estado == "VENTA_GENERADA":
+        cotizacion_aceptada = db.execute(
+            select(Cotizacion).where(
+                Cotizacion.venta_id == venta.id,
+                Cotizacion.estado == "ACEPTADA",
+                Cotizacion.is_deleted == False,
+            )
+        ).scalar_one_or_none()
+        if not cotizacion_aceptada:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No existe una cotización aceptada. Acepta una cotización antes de confirmar la venta.",
+            )
+        venta.monto_total = cotizacion_aceptada.monto_total
+        _crear_stubs_confirmacion(db, venta, cotizacion_aceptada, user_id)
+
     venta.estado = nuevo_estado
     venta.updated_by = user_id
-    if nuevo_estado == "ANULADA":
+    if nuevo_estado == "CERRADA":
+        venta.fecha_cierre = datetime.now(timezone.utc)
+    elif nuevo_estado == "ANULADA":
         venta.fecha_anulacion = datetime.now(timezone.utc)
         venta.motivo_anulacion = motivo
     db.flush()
@@ -181,11 +342,20 @@ def crear_cotizacion(db: Session, venta: Venta, data: CotizacionCreate, user_id:
 
 
 def _crear_linea(db: Session, cotizacion_id: UUID, data: LineaCotizacionCreate, user_id: UUID, orden: int = 0) -> LineaCotizacion:
+    from app.modules.productos.models import Producto as ProductoModel
     subtotal = round(data.cantidad * data.precio_unitario * (1 - data.descuento_pct / 100), 2)
+
+    # Derivar es_servicio desde el catálogo
+    producto = db.execute(
+        select(ProductoModel).where(ProductoModel.id == data.producto_id, ProductoModel.is_deleted == False)
+    ).scalar_one_or_none()
+    es_servicio = producto.tipo_producto != "PRODUCTO_FISICO" if producto else False
+
     linea = LineaCotizacion(
         id=uuid4(),
         cotizacion_id=cotizacion_id,
         subtotal=subtotal,
+        es_servicio=es_servicio,
         created_by=user_id,
         updated_by=user_id,
         **{k: v for k, v in data.model_dump().items()},
@@ -304,6 +474,7 @@ def listar_stubs(
     tipo: str | None = None,
     estado: str | None = None,
     cliente_id: UUID | None = None,
+    venta_id: UUID | None = None,
 ) -> tuple[list[SolicitudStub], int]:
     q = select(SolicitudStub).where(SolicitudStub.is_deleted == False)
     if tipo:
@@ -312,6 +483,8 @@ def listar_stubs(
         q = q.where(SolicitudStub.estado == estado)
     if cliente_id:
         q = q.where(SolicitudStub.cliente_id == cliente_id)
+    if venta_id:
+        q = q.where(SolicitudStub.venta_id == venta_id)
 
     total = db.execute(select(func.count()).select_from(q.subquery())).scalar_one()
     col = getattr(SolicitudStub, params.orden, SolicitudStub.created_at)
@@ -322,7 +495,7 @@ def listar_stubs(
 
 
 def crear_stub(db: Session, data: StubCreate, user_id: UUID) -> SolicitudStub:
-    tipo_map = {"BOD": "bod", "COB": "cob", "CTB": "ctb", "GER": "ger"}
+    tipo_map = {"BOD": "bod", "COB": "cob", "CTB": "ctb", "GER": "ger", "INS": "ins"}
     codigo = siguiente_codigo(db, tipo_map[data.tipo])
     stub = SolicitudStub(
         id=uuid4(),
@@ -350,4 +523,94 @@ def cambiar_estado_stub(db: Session, stub: SolicitudStub, nuevo_estado: str, use
     if respuesta:
         stub.respuesta = respuesta
     db.flush()
+    if nuevo_estado == "COMPLETADA" and stub.venta_id:
+        _auto_cerrar_venta(db, stub.venta_id, user_id)
     return stub
+
+
+# ─── Actividad (timeline) ─────────────────────────────────────────────────────
+
+def listar_actividad_venta(db: Session, venta_id: UUID, limit: int = 50) -> list[dict]:
+    """
+    Retorna los eventos de auditoría asociados a una venta y sus entidades
+    relacionadas (cotizaciones, stubs), ordenados del más reciente al más antiguo.
+    """
+    from app.modules.auth.models import AuditLog
+
+    # IDs de cotizaciones de esta venta
+    cotizacion_ids = list(db.execute(
+        select(Cotizacion.id).where(
+            Cotizacion.venta_id == venta_id,
+            Cotizacion.is_deleted == False,
+        )
+    ).scalars().all())
+
+    # IDs de stubs de esta venta
+    stub_ids = list(db.execute(
+        select(SolicitudStub.id).where(
+            SolicitudStub.venta_id == venta_id,
+            SolicitudStub.is_deleted == False,
+        )
+    ).scalars().all())
+
+    # Construcción dinámica del filtro
+    from sqlalchemy import or_
+    conditions = [
+        (AuditLog.entity_type == "ventas") & (AuditLog.entity_id == venta_id),
+    ]
+    if cotizacion_ids:
+        conditions.append(
+            (AuditLog.entity_type.in_(["cotizaciones", "lineas_cotizacion"]))
+            & (AuditLog.entity_id.in_(cotizacion_ids))
+        )
+    if stub_ids:
+        conditions.append(
+            (AuditLog.entity_type == "stubs") & (AuditLog.entity_id.in_(stub_ids))
+        )
+
+    from app.modules.auth.models import Usuario
+    rows = db.execute(
+        select(AuditLog, Usuario.nombre.label("user_nombre"))
+        .outerjoin(Usuario, AuditLog.user_id == Usuario.id)
+        .where(or_(*conditions))
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+    ).all()
+
+    # Construir códigos para display (código legible de cada entidad)
+    cot_codigos: dict[UUID, str] = {}
+    if cotizacion_ids:
+        rows_cot = db.execute(
+            select(Cotizacion.id, Cotizacion.codigo).where(Cotizacion.id.in_(cotizacion_ids))
+        ).all()
+        cot_codigos = {r.id: r.codigo for r in rows_cot}
+
+    stub_codigos: dict[UUID, str] = {}
+    if stub_ids:
+        rows_stub = db.execute(
+            select(SolicitudStub.id, SolicitudStub.codigo).where(SolicitudStub.id.in_(stub_ids))
+        ).all()
+        stub_codigos = {r.id: r.codigo for r in rows_stub}
+
+    result = []
+    for log, user_nombre in rows:
+        entity_codigo: str | None = None
+        if log.entity_type == "ventas":
+            entity_codigo = None  # el código de la venta ya lo tiene el frontend
+        elif log.entity_type in ("cotizaciones", "lineas_cotizacion") and log.entity_id in cot_codigos:
+            entity_codigo = cot_codigos[log.entity_id]
+        elif log.entity_type == "stubs" and log.entity_id in stub_codigos:
+            entity_codigo = stub_codigos[log.entity_id]
+
+        result.append({
+            "id": str(log.id),
+            "action": log.action,
+            "entity_type": log.entity_type,
+            "entity_id": str(log.entity_id) if log.entity_id else None,
+            "entity_codigo": entity_codigo,
+            "event_data": log.event_data,
+            "user_id": str(log.user_id) if log.user_id else None,
+            "user_nombre": user_nombre,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+        })
+    return result

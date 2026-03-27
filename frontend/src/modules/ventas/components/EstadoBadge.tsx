@@ -8,7 +8,6 @@ const BADGE_STYLES: Record<string, string> = {
   CONSULTA_ABIERTA:   'bg-sky-100 text-sky-800 border-sky-200',
   COTIZACION_ENVIADA: 'bg-amber-100 text-amber-800 border-amber-200',
   VENTA_GENERADA:     'bg-violet-100 text-violet-800 border-violet-200',
-  EN_PROCESO:         'bg-teal-100 text-teal-800 border-teal-200',
   CERRADA:            'bg-emerald-100 text-emerald-800 border-emerald-200',
   ANULADA:            'bg-rose-100 text-rose-800 border-rose-200',
   // Cotización
@@ -23,7 +22,6 @@ const LABELS: Record<string, string> = {
   CONSULTA_ABIERTA:   'Consulta abierta',
   COTIZACION_ENVIADA: 'Cotización enviada',
   VENTA_GENERADA:     'Venta generada',
-  EN_PROCESO:         'En proceso',
   CERRADA:            'Cerrada',
   ANULADA:            'Anulada',
   BORRADOR:   'Borrador',

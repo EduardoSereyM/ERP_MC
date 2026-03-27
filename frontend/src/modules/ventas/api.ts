@@ -1,5 +1,6 @@
 import { api } from '@/core/config/api'
 import type {
+  ActividadItem,
   Cotizacion,
   CotizacionCambioEstado,
   CotizacionCreate,
@@ -29,6 +30,7 @@ export interface ListStubsParams {
   tipo?: string
   estado?: string
   cliente_id?: string
+  venta_id?: string
   page?: number
   limit?: number
 }
@@ -144,5 +146,12 @@ export async function crearStub(payload: StubCreate): Promise<SolicitudStub> {
 
 export async function cambiarEstadoStub(stubId: string, payload: StubCambioEstado): Promise<SolicitudStub> {
   const { data } = await api.post<SimpleResponse<SolicitudStub>>(`/stubs/${stubId}/estado`, payload)
+  return data.data
+}
+
+// ─── Actividad ─────────────────────────────────────────────────────────────────
+
+export async function listarActividadVenta(ventaId: string, limit = 50): Promise<ActividadItem[]> {
+  const { data } = await api.get<SimpleResponse<ActividadItem[]>>(`/ventas/${ventaId}/actividad`, { params: { limit } })
   return data.data
 }
