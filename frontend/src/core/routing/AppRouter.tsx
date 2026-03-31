@@ -9,6 +9,8 @@ import { VentasListView } from '@/modules/ventas/views/VentasListView'
 import { StubsListView } from '@/modules/ventas/views/StubsListView'
 import { VentaDetailView } from '@/modules/ventas/views/VentaDetailView'
 import { AuditLogsView } from '@/modules/logs/views/AuditLogsView'
+import { SACListView } from '@/modules/sac/views/SACListView'
+import { SACDetailView } from '@/modules/sac/views/SACDetailView'
 
 const UnauthorizedView = () => (
   <div className="flex items-center justify-center h-screen bg-surface-muted">
@@ -79,6 +81,24 @@ export const AppRouter = () => {
             element={
               <ProtectedRoute requiredModulo="ventas">
                 <VentaDetailView />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Instalaciones (SAC) */}
+          <Route
+            path="/instalaciones"
+            element={
+              <ProtectedRoute requiredModulo="instalaciones">
+                <SACListView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/instalaciones/:id"
+            element={
+              <ProtectedRoute requiredModulo="instalaciones">
+                <SACDetailView />
               </ProtectedRoute>
             }
           />

@@ -13,6 +13,7 @@ from app.modules.dashboard.router import router as dashboard_router
 from app.modules.logs.router import router as logs_router
 from app.modules.ventas.router import router as ventas_router, stubs_router
 from app.modules.notificaciones.router import router as notificaciones_router
+from app.modules.sac.router import router as sac_router, ot_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -39,9 +40,8 @@ app.include_router(logs_router, prefix=settings.API_V1_PREFIX)
 app.include_router(ventas_router, prefix=settings.API_V1_PREFIX)
 app.include_router(stubs_router, prefix=settings.API_V1_PREFIX)
 app.include_router(notificaciones_router, prefix=settings.API_V1_PREFIX)
-
-# Agregar aquí los routers de fases posteriores:
-# app.include_router(sac_router, prefix=settings.API_V1_PREFIX)
+app.include_router(sac_router, prefix=settings.API_V1_PREFIX)
+app.include_router(ot_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/health", tags=["sistema"])

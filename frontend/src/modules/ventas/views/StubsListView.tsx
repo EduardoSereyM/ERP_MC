@@ -8,6 +8,7 @@ const TIPO_LABEL: Record<TipoStub, string> = {
   COB: 'Cobranza',
   CTB: 'Contabilidad',
   GER: 'Gerencia',
+  INS: 'Instalación',
 }
 
 const TIPO_STYLE: Record<TipoStub, string> = {
@@ -15,6 +16,7 @@ const TIPO_STYLE: Record<TipoStub, string> = {
   COB: 'bg-warning-10 text-warning-text',
   CTB: 'bg-info-10 text-info-text',
   GER: 'bg-danger-10 text-danger-text',
+  INS: 'bg-purple-50 text-purple-700',
 }
 
 const ESTADO_STYLE: Record<string, string> = {
@@ -33,7 +35,7 @@ export const StubsListView = () => {
     limit: 20,
   })
 
-  const tipos: TipoStub[] = ['BOD', 'COB', 'CTB', 'GER']
+  const tipos: TipoStub[] = ['BOD', 'COB', 'CTB', 'GER', 'INS']
 
   return (
     <div className="p-6">

@@ -226,25 +226,20 @@ def _crear_stubs_confirmacion(db: Session, venta: Venta, cotizacion: Cotizacion,
     ))
     db.flush()
 
-    # INS: si incluye instalación
+    # INS: si incluye instalación → crear SAC real (Fase 1B)
     if incluye_instalacion:
-        db.add(SolicitudStub(
-            id=uuid4(),
-            codigo=siguiente_codigo(db, "ins"),
-            tipo="INS",
-            origen_modulo="ventas",
-            origen_id=venta.id,
-            cliente_id=venta.cliente_id,
-            venta_id=venta.id,
-            estado="PENDIENTE",
-            descripcion=f"Instalación {desc_base}",
-            fecha_limite=_sumar_dias_habiles(ahora, _SLA_DIAS_HABILES["INS"]),
-            created_by=user_id,
-            updated_by=user_id,
-        ))
-        db.flush()
+        from app.modules.sac.service import crear_sac_desde_venta
+        sac = crear_sac_desde_venta(db, venta.id, venta.cliente_id, venta.tipo, user_id)
+        # Notificar a coordinadores del nuevo SAC
+        from app.modules.notificaciones.service import notificar_usuarios_por_rol
+        notificar_usuarios_por_rol(
+            db, "coordinador_instalaciones", "asignacion",
+            f"Nuevo SAC {sac.codigo} creado desde {venta.codigo}",
+            f"Nueva instalación generada al confirmar la venta.",
+            entity_type="sac", entity_id=sac.id,
+        )
 
-    # Notificar a las áreas correspondientes
+    # Notificar a las áreas correspondientes (BOD, COB)
     _notificar_stubs_creados(db, venta)
 
 

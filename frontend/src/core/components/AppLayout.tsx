@@ -46,10 +46,11 @@ interface NavItemDef {
 }
 
 const NAV_ITEMS: NavItemDef[] = [
-  { path: '/dashboard', label: 'Dashboard',  icon: 'dashboard', modulo: 'dashboard'    },
-  { path: '/ventas',    label: 'Ventas',      icon: 'payments',  modulo: 'ventas'       },
-  { path: '/clientes',  label: 'Clientes',    icon: 'group',     modulo: 'clientes'     },
-  { path: '/stubs',     label: 'Solicitudes', icon: 'task_alt',  modulo: 'solicitudes'  },
+  { path: '/dashboard',     label: 'Dashboard',     icon: 'dashboard',   modulo: 'dashboard'    },
+  { path: '/ventas',        label: 'Ventas',         icon: 'payments',    modulo: 'ventas'       },
+  { path: '/clientes',      label: 'Clientes',       icon: 'group',       modulo: 'clientes'     },
+  { path: '/instalaciones', label: 'Instalaciones',  icon: 'construction',modulo: 'instalaciones'},
+  { path: '/stubs',         label: 'Solicitudes',    icon: 'task_alt',    modulo: 'solicitudes'  },
 ]
 
 // ─── Nav items deshabilitados (en construcción o fases futuras) ───────────────

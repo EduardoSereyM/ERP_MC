@@ -31,7 +31,6 @@ const VENTA_BADGE: Record<EstadoVenta, 'info' | 'warning' | 'success' | 'neutral
   CONSULTA_ABIERTA:   'info',
   COTIZACION_ENVIADA: 'warning',
   VENTA_GENERADA:     'info',
-  EN_PROCESO:         'success',
   CERRADA:            'neutral',
   ANULADA:            'danger',
 }
@@ -64,12 +63,6 @@ const ESTADO_PILLS: PillDef[] = [
     label: ESTADO_VENTA_LABEL['VENTA_GENERADA'],
     activeClass:   'bg-blue-100 text-blue-800 border-blue-300 font-bold',
     inactiveClass: 'bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100',
-  },
-  {
-    key: 'EN_PROCESO',
-    label: ESTADO_VENTA_LABEL['EN_PROCESO'],
-    activeClass:   'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold',
-    inactiveClass: 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100',
   },
   {
     key: 'CERRADA',
