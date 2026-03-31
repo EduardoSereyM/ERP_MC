@@ -1,10 +1,17 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
 import icono from '@/assets/icono.png'
 import { useSession } from '@/modules/auth/hooks/useSession'
 import { useAuth } from '@/modules/auth/hooks/useAuth'
 import { usePermisos } from '@/core/hooks/usePermisos'
 import type { ModuloId } from '@/core/permisos'
 import type { RolFuncional } from '@/modules/auth/types'
+import {
+  useContadorNotificaciones,
+  useNotificaciones,
+  useMarcarLeida,
+  useMarcarTodasLeidas,
+} from '@/modules/notificaciones/hooks/useNotificaciones'
 
 // ─── Íconos Material Symbols ─────────────────────────────────────────────────
 const Icon = ({ name, filled = false, className = '' }: { name: string; filled?: boolean; className?: string }) => (
@@ -71,6 +78,27 @@ export const AppLayout = () => {
   const { cerrarSesion } = useAuth()
   const location = useLocation()
   const permisos = usePermisos()
+
+  const [panelAbierto, setPanelAbierto] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  const { data: contador } = useContadorNotificaciones()
+  const { data: notificaciones } = useNotificaciones()
+  const { mutate: marcarLeida } = useMarcarLeida()
+  const { mutate: marcarTodas } = useMarcarTodasLeidas()
+
+  const noLeidas = contador?.no_leidas ?? 0
+
+  // Cerrar panel al hacer click fuera
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setPanelAbierto(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const initials = usuario ? getInitials(usuario.nombre) : '?'
 
@@ -159,10 +187,71 @@ export const AppLayout = () => {
         <header className="flex justify-end items-center h-16 px-8 bg-white border-b border-surface-border z-40 flex-shrink-0">
           <div className="flex items-center gap-3">
             {/* Notificaciones */}
-            <button className="p-2 text-text-secondary hover:text-primary transition-colors relative rounded-lg hover:bg-surface-muted">
-              <Icon name="notifications" className="text-xl" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-danger rounded-full" />
-            </button>
+            <div className="relative" ref={panelRef}>
+              <button
+                onClick={() => setPanelAbierto(v => !v)}
+                className="p-2 text-text-secondary hover:text-primary transition-colors relative rounded-lg hover:bg-surface-muted"
+              >
+                <Icon name="notifications" className="text-xl" />
+                {noLeidas > 0 && (
+                  <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-0.5 bg-danger rounded-full text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                    {noLeidas > 99 ? '99+' : noLeidas}
+                  </span>
+                )}
+              </button>
+
+              {/* Panel dropdown */}
+              {panelAbierto && (
+                <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-surface-border z-50 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-surface-border">
+                    <span className="text-sm font-semibold text-text-primary">Notificaciones</span>
+                    {noLeidas > 0 && (
+                      <button
+                        onClick={() => marcarTodas()}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Marcar todas como leídas
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto divide-y divide-surface-border">
+                    {!notificaciones || notificaciones.length === 0 ? (
+                      <div className="px-4 py-8 text-center text-sm text-text-secondary">
+                        Sin notificaciones
+                      </div>
+                    ) : (
+                      notificaciones.map(n => (
+                        <div
+                          key={n.id}
+                          onClick={() => { if (!n.leida) marcarLeida(n.id) }}
+                          className={`px-4 py-3 cursor-pointer transition-colors hover:bg-surface-muted ${
+                            !n.leida ? 'bg-primary/5' : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            {!n.leida && (
+                              <span className="mt-1.5 w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                            )}
+                            <div className={!n.leida ? '' : 'pl-4'}>
+                              <p className="text-xs font-semibold text-text-primary leading-tight">{n.titulo}</p>
+                              {n.mensaje && (
+                                <p className="text-xs text-text-secondary mt-0.5 leading-tight">{n.mensaje}</p>
+                              )}
+                              <p className="text-[10px] text-text-secondary mt-1">
+                                {new Date(n.created_at).toLocaleString('es-CL', {
+                                  day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                                })}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Apps */}
             <button className="p-2 text-text-secondary hover:text-primary transition-colors rounded-lg hover:bg-surface-muted">

@@ -244,6 +244,35 @@ def _crear_stubs_confirmacion(db: Session, venta: Venta, cotizacion: Cotizacion,
         ))
         db.flush()
 
+    # Notificar a las áreas correspondientes
+    _notificar_stubs_creados(db, venta)
+
+
+def _notificar_stubs_creados(db: Session, venta: Venta) -> None:
+    """Notifica a cada área cuando se crean sus stubs al confirmar una venta."""
+    from app.modules.notificaciones.service import notificar_usuarios_por_rol, ROL_POR_TIPO_STUB
+
+    stubs_nuevos = list(db.execute(
+        select(SolicitudStub).where(
+            SolicitudStub.venta_id == venta.id,
+            SolicitudStub.is_deleted == False,
+            SolicitudStub.estado == "PENDIENTE",
+        )
+    ).scalars().all())
+
+    for stub in stubs_nuevos:
+        rol = ROL_POR_TIPO_STUB.get(stub.tipo)
+        if rol:
+            notificar_usuarios_por_rol(
+                db,
+                rol_funcional=rol,
+                tipo="stub_creado",
+                titulo=f"Nueva solicitud {stub.codigo}",
+                mensaje=stub.descripcion,
+                entity_type="stubs",
+                entity_id=stub.id,
+            )
+
 
 def _auto_cerrar_venta(db: Session, venta_id: UUID, user_id: UUID) -> None:
     """Si todos los stubs de la venta están COMPLETADA, cierra la venta automáticamente."""
@@ -303,19 +332,44 @@ def cambiar_estado_venta(db: Session, venta: Venta, nuevo_estado: str, user_id: 
 
 # ─── Cotizaciones ─────────────────────────────────────────────────────────────
 
+def _auto_vencer_cotizaciones(db: Session, cotizaciones: list[Cotizacion]) -> None:
+    """Marca VENCIDA cualquier cotización ENVIADA cuya fecha_vencimiento ya pasó."""
+    from datetime import date
+    hoy = date.today()
+    vencidas = [
+        c for c in cotizaciones
+        if c.estado == "ENVIADA" and c.fecha_vencimiento and c.fecha_vencimiento < hoy
+    ]
+    if not vencidas:
+        return
+    db.execute(
+        Cotizacion.__table__.update()
+        .where(Cotizacion.id.in_([c.id for c in vencidas]))
+        .values(estado="VENCIDA", updated_at=func.now())
+    )
+    db.flush()
+    for c in vencidas:
+        c.estado = "VENCIDA"
+
+
 def listar_cotizaciones(db: Session, venta_id: UUID) -> list[Cotizacion]:
-    return list(
+    cotizaciones = list(
         db.execute(
             select(Cotizacion).where(Cotizacion.venta_id == venta_id, Cotizacion.is_deleted == False)
             .order_by(Cotizacion.created_at.desc())
         ).scalars().all()
     )
+    _auto_vencer_cotizaciones(db, cotizaciones)
+    return cotizaciones
 
 
 def obtener_cotizacion(db: Session, cotizacion_id: UUID) -> Cotizacion | None:
-    return db.execute(
+    cotizacion = db.execute(
         select(Cotizacion).where(Cotizacion.id == cotizacion_id, Cotizacion.is_deleted == False)
     ).scalar_one_or_none()
+    if cotizacion:
+        _auto_vencer_cotizaciones(db, [cotizacion])
+    return cotizacion
 
 
 def crear_cotizacion(db: Session, venta: Venta, data: CotizacionCreate, user_id: UUID) -> Cotizacion:
@@ -552,9 +606,39 @@ def cambiar_estado_stub(db: Session, stub: SolicitudStub, nuevo_estado: str, use
     if respuesta:
         stub.respuesta = respuesta
     db.flush()
+    if nuevo_estado in ("COMPLETADA", "RECHAZADA") and stub.venta_id:
+        _notificar_cambio_stub(db, stub, nuevo_estado, respuesta)
     if nuevo_estado == "COMPLETADA" and stub.venta_id:
         _auto_cerrar_venta(db, stub.venta_id, user_id)
     return stub
+
+
+def _notificar_cambio_stub(db: Session, stub: SolicitudStub, nuevo_estado: str, respuesta: str | None) -> None:
+    """Notifica al vendedor de la venta cuando un stub se completa o rechaza."""
+    from app.modules.notificaciones.service import crear_notificacion
+
+    venta = db.execute(
+        select(Venta).where(Venta.id == stub.venta_id, Venta.is_deleted == False)
+    ).scalar_one_or_none()
+    if not venta:
+        return
+
+    if nuevo_estado == "COMPLETADA":
+        titulo = f"{stub.codigo} completado"
+        mensaje = f"La solicitud {stub.codigo} ha sido completada."
+    else:
+        titulo = f"{stub.codigo} rechazado"
+        mensaje = f"La solicitud {stub.codigo} fue rechazada. {respuesta or ''}".strip()
+
+    crear_notificacion(
+        db,
+        user_id=venta.vendedor_id,
+        tipo=f"stub_{nuevo_estado.lower()}",
+        titulo=titulo,
+        mensaje=mensaje,
+        entity_type="stubs",
+        entity_id=stub.id,
+    )
 
 
 # ─── Actividad (timeline) ─────────────────────────────────────────────────────

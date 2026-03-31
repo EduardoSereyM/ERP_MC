@@ -1,7 +1,7 @@
 # SYSTEM_STATE.md — ERP MC
 
-> Última actualización: 2026-03-26 (sesión 2)
-> Fase actual: **1A — Ventas** (data layer + backend + frontend — app en funcionamiento con formularios y búsqueda)
+> Última actualización: 2026-03-31 (sesión 3)
+> Fase actual: **1A — Ventas COMPLETA → preparando 1B (SAC/Instalaciones)**
 
 ---
 
@@ -367,12 +367,15 @@ PENDIENTE → EN_REVISION → COMPLETADA
 
 | Item | Fase |
 |------|------|
-| Auto-vencimiento cotizaciones por `fecha_vencimiento` (job o check on-read) | 1A |
-| Notificaciones de VTA + Stubs | 1A |
-| Conectar `fecha_cierre` (poblar al transicionar a CERRADA en backend) | 1A |
 | SAC / Instalaciones | 1B |
 | Servicios Técnicos | 1C |
 | Postventa | 1D |
-| Incidencias, Notificaciones in-app, SLA configs | 1E |
+| Incidencias, SLA configs | 1E |
 | Reportería, KPIs, Admin avanzado | 1F |
 | Inventario | 2 |
+
+### Completado en sesión 3 (2026-03-31)
+- ✅ Auto-vencimiento cotizaciones on-read (`_auto_vencer_cotizaciones` en service.py)
+- ✅ `fecha_cierre` ya estaba implementado en `cambiar_estado_venta` y `_auto_cerrar_venta`
+- ✅ Notificaciones in-app: tabla `notificaciones`, módulo backend completo, polling frontend, badge + panel dropdown en topbar
+  - Triggers: stub creado → notifica área correspondiente; stub completado/rechazado → notifica vendedor
