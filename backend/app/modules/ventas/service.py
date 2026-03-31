@@ -52,11 +52,12 @@ TRANSICIONES_VENTA: dict[str, list[str]] = {
 }
 
 TRANSICIONES_COTIZACION: dict[str, list[str]] = {
-    "BORRADOR":   ["ENVIADA"],
-    "ENVIADA":    ["ACEPTADA", "RECHAZADA", "VENCIDA"],
+    "BORRADOR":   ["ENVIADA", "ANULADA"],
+    "ENVIADA":    ["ACEPTADA", "RECHAZADA", "VENCIDA", "ANULADA"],
     "ACEPTADA":   [],
     "RECHAZADA":  [],
     "VENCIDA":    [],
+    "ANULADA":    [],
 }
 
 TRANSICIONES_STUB: dict[str, list[str]] = {
@@ -439,7 +440,7 @@ def eliminar_linea(db: Session, linea: LineaCotizacion, user_id: UUID) -> None:
     _recalcular_totales_cotizacion(db, cotizacion_id)
 
 
-def cambiar_estado_cotizacion(db: Session, cotizacion: Cotizacion, nuevo_estado: str, user_id: UUID) -> Cotizacion:
+def cambiar_estado_cotizacion(db: Session, cotizacion: Cotizacion, nuevo_estado: str, user_id: UUID, motivo_anulacion: str | None = None) -> Cotizacion:
     _validar_transicion(cotizacion.estado, nuevo_estado, TRANSICIONES_COTIZACION, "cotizacion")
     # Solo puede haber una cotización ACEPTADA por venta
     if nuevo_estado == "ACEPTADA":
@@ -456,14 +457,42 @@ def cambiar_estado_cotizacion(db: Session, cotizacion: Cotizacion, nuevo_estado:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Ya existe una cotización aceptada ({ya_aceptada.codigo}). Solo puede haber una por venta.",
             )
+    if nuevo_estado == "ANULADA" and not motivo_anulacion:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Se requiere un motivo para anular la cotización.",
+        )
     cotizacion.estado = nuevo_estado
     cotizacion.updated_by = user_id
     if nuevo_estado == "ENVIADA":
         cotizacion.fecha_envio = datetime.now(timezone.utc)
     elif nuevo_estado in ("ACEPTADA", "RECHAZADA", "VENCIDA"):
         cotizacion.fecha_respuesta = datetime.now(timezone.utc)
+    elif nuevo_estado == "ANULADA":
+        cotizacion.motivo_anulacion = motivo_anulacion
+        cotizacion.fecha_anulacion = datetime.now(timezone.utc)
     db.flush()
     return cotizacion
+
+
+# ─── Descuento sugerido ───────────────────────────────────────────────────────
+
+# Reglas de descuento por tipo_cliente (configurable vía admin UI en el futuro)
+_DESCUENTOS_POR_TIPO: dict[str, dict] = {
+    "vip":          {"descuento_pct": 15, "motivo": "cliente_vip",     "mensaje": "Cliente VIP — descuento del 15% aplicable"},
+    "distribuidor": {"descuento_pct": 10, "motivo": "fidelidad",        "mensaje": "Distribuidor — descuento del 10% aplicable"},
+    "constructor":  {"descuento_pct": 8,  "motivo": "ajuste_comercial", "mensaje": "Constructor — descuento del 8% aplicable"},
+    "inmobiliaria": {"descuento_pct": 8,  "motivo": "ajuste_comercial", "mensaje": "Inmobiliaria — descuento del 8% aplicable"},
+    "empresa":      {"descuento_pct": 5,  "motivo": "ajuste_comercial", "mensaje": "Empresa — descuento del 5% aplicable"},
+    "contratista":  {"descuento_pct": 5,  "motivo": "ajuste_comercial", "mensaje": "Contratista — descuento del 5% aplicable"},
+}
+
+
+def calcular_descuento_sugerido(tipo_cliente: str | None) -> dict:
+    """Retorna el descuento sugerido y motivo para un tipo de cliente."""
+    if tipo_cliente and tipo_cliente in _DESCUENTOS_POR_TIPO:
+        return _DESCUENTOS_POR_TIPO[tipo_cliente]
+    return {"descuento_pct": 0, "motivo": None, "mensaje": None}
 
 
 # ─── Stubs ────────────────────────────────────────────────────────────────────

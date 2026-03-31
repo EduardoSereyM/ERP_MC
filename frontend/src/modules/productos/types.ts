@@ -1,5 +1,14 @@
 export type UnidadMedida = 'm2' | 'ml' | 'unidad' | 'kg' | 'hora' | 'otro'
 
+export type TipoProducto = 'PRODUCTO_FISICO' | 'SERVICIO_INSTALACION' | 'SERVICIO_TECNICO' | 'SERVICIO_OTRO'
+
+export const TIPO_PRODUCTO_LABEL: Record<TipoProducto, string> = {
+  PRODUCTO_FISICO:       'Producto físico',
+  SERVICIO_INSTALACION:  'Servicio de instalación',
+  SERVICIO_TECNICO:      'Servicio técnico',
+  SERVICIO_OTRO:         'Servicio (otro)',
+}
+
 export interface Categoria {
   id: string
   modulo: string
@@ -24,6 +33,7 @@ export interface Producto {
   categoria_id: string | null
   precio_base: number
   unidad_medida: UnidadMedida
+  tipo_producto: TipoProducto
   requiere_instalacion: boolean
   activo: boolean
   servicios: ServicioAsociado[]
@@ -37,6 +47,7 @@ export interface ProductoListItem {
   nombre: string
   precio_base: number
   unidad_medida: UnidadMedida
+  tipo_producto: TipoProducto
   requiere_instalacion: boolean
   activo: boolean
   /** ID del servicio de instalación vinculado (fake data + futuro backend) */
@@ -49,6 +60,7 @@ export interface ProductoCreate {
   categoria_id?: string | null
   precio_base?: number
   unidad_medida?: UnidadMedida
+  tipo_producto?: TipoProducto
   requiere_instalacion?: boolean
 }
 
@@ -58,6 +70,7 @@ export interface ProductoUpdate {
   categoria_id?: string | null
   precio_base?: number
   unidad_medida?: UnidadMedida
+  tipo_producto?: TipoProducto
   requiere_instalacion?: boolean
   activo?: boolean
 }

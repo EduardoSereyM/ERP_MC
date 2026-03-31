@@ -150,7 +150,7 @@ def cambiar_estado_cotizacion(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(require_rol(["vendedor", "admin", "gerencia"])),
 ):
-    cotizacion = svc.cambiar_estado_cotizacion(db, cotizacion, payload.estado, current_user.id)
+    cotizacion = svc.cambiar_estado_cotizacion(db, cotizacion, payload.estado, current_user.id, payload.motivo_anulacion)
     db.commit()
     db.refresh(cotizacion)
     log_audit(db, "UPDATE", "cotizaciones", current_user.id, cotizacion.id, metadata={"estado": payload.estado}, request=request)
@@ -321,6 +321,29 @@ def listar_actividad_venta(
 ):
     items = svc.listar_actividad_venta(db, venta.id, limit=limit)
     return RespuestaSimple(data=items)
+
+
+# ─── Descuento sugerido ───────────────────────────────────────────────────────
+
+@router.get("/descuento-sugerido", response_model=RespuestaSimple[dict])
+@limiter.limit("60/minute")
+def descuento_sugerido(
+    request: Request,
+    cliente_id: UUID = Query(...),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Retorna el descuento sugerido y motivo para un cliente dado,
+    basado en su tipo_cliente y reglas activas.
+    """
+    from app.modules.clientes.models import Cliente
+    cliente = db.query(Cliente).filter(Cliente.id == cliente_id, Cliente.is_deleted == False).first()
+    if not cliente:
+        return RespuestaSimple(data={"descuento_pct": 0, "motivo": None, "mensaje": None})
+
+    resultado = svc.calcular_descuento_sugerido(cliente.tipo_cliente)
+    return RespuestaSimple(data=resultado)
 
 
 # ─── Stubs ────────────────────────────────────────────────────────────────────

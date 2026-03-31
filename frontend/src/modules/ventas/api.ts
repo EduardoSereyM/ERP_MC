@@ -83,6 +83,17 @@ export async function listarCotizaciones(ventaId: string): Promise<Cotizacion[]>
   return data.data
 }
 
+export interface DescuentoSugerido {
+  descuento_pct: number
+  motivo: string | null
+  mensaje: string | null
+}
+
+export async function getDescuentoSugerido(clienteId: string): Promise<DescuentoSugerido> {
+  const { data } = await api.get<{ data: DescuentoSugerido }>(`/ventas/descuento-sugerido`, { params: { cliente_id: clienteId } })
+  return data.data
+}
+
 export async function crearCotizacion(ventaId: string, payload: CotizacionCreate): Promise<Cotizacion> {
   const { data } = await api.post<SimpleResponse<Cotizacion>>(`/ventas/${ventaId}/cotizaciones`, payload)
   return data.data

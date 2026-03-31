@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Button, Input } from '@/shared/components/ui'
 import { useCrearProducto, useActualizarProducto, useCategorias } from '@/modules/productos'
-import type { ProductoCreate, ProductoListItem, UnidadMedida } from '@/modules/productos'
+import type { ProductoCreate, ProductoListItem, TipoProducto, UnidadMedida } from '@/modules/productos'
+import { TIPO_PRODUCTO_LABEL } from '@/modules/productos'
 
 interface ProductoFormProps {
   initial?: ProductoListItem | null
@@ -18,6 +19,8 @@ const UNIDADES: { value: UnidadMedida; label: string }[] = [
   { value: 'otro', label: 'Otro' },
 ]
 
+const TIPOS: TipoProducto[] = ['PRODUCTO_FISICO', 'SERVICIO_INSTALACION', 'SERVICIO_TECNICO', 'SERVICIO_OTRO']
+
 export const ProductoForm = ({ initial, onSuccess, onCancel }: ProductoFormProps) => {
   const [form, setForm] = useState<ProductoCreate>({
     nombre: '',
@@ -25,6 +28,7 @@ export const ProductoForm = ({ initial, onSuccess, onCancel }: ProductoFormProps
     categoria_id: undefined,
     precio_base: 0,
     unidad_medida: 'm2',
+    tipo_producto: 'PRODUCTO_FISICO',
     requiere_instalacion: false,
   })
 
@@ -40,6 +44,7 @@ export const ProductoForm = ({ initial, onSuccess, onCancel }: ProductoFormProps
         nombre: initial.nombre,
         precio_base: Number(initial.precio_base),
         unidad_medida: initial.unidad_medida as UnidadMedida,
+        tipo_producto: initial.tipo_producto as TipoProducto,
         requiere_instalacion: initial.requiere_instalacion,
       })
     }
@@ -90,6 +95,20 @@ export const ProductoForm = ({ initial, onSuccess, onCancel }: ProductoFormProps
             {UNIDADES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
           </select>
         </div>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-sm font-medium text-text-primary">Tipo de producto</label>
+        <select
+          value={form.tipo_producto}
+          onChange={e => setForm(f => ({ ...f, tipo_producto: e.target.value as TipoProducto }))}
+          className="rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          {TIPOS.map(t => <option key={t} value={t}>{TIPO_PRODUCTO_LABEL[t]}</option>)}
+        </select>
+        <p className="text-xs text-text-disabled">
+          Define la lógica de despacho e instalación al confirmar una venta.
+        </p>
       </div>
 
       <Input

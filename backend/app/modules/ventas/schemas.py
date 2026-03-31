@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 EstadoVenta = Literal[
     "CONSULTA_ABIERTA", "COTIZACION_ENVIADA", "VENTA_GENERADA", "CERRADA", "ANULADA"
 ]
-EstadoCotizacion = Literal["BORRADOR", "ENVIADA", "ACEPTADA", "RECHAZADA", "VENCIDA"]
+EstadoCotizacion = Literal["BORRADOR", "ENVIADA", "ACEPTADA", "RECHAZADA", "VENCIDA", "ANULADA"]
 TipoStub = Literal["BOD", "COB", "CTB", "GER", "INS"]
 EstadoStub = Literal["PENDIENTE", "EN_REVISION", "COMPLETADA", "RECHAZADA"]
 OrigenModulo = Literal["ventas", "sac", "servicios_tecnicos", "postventa"]
@@ -131,6 +131,7 @@ class CotizacionUpdate(BaseModel):
 
 class CotizacionCambioEstado(BaseModel):
     estado: EstadoCotizacion
+    motivo_anulacion: str | None = None
 
 
 class CotizacionResponse(BaseModel):
@@ -150,6 +151,8 @@ class CotizacionResponse(BaseModel):
     notas_cliente: str | None
     descuento_global_pct: Decimal = Decimal("0")
     descuento_motivo: str | None
+    motivo_anulacion: str | None
+    fecha_anulacion: datetime | None
     lineas: list[LineaCotizacionResponse] = []
     created_at: datetime
     updated_at: datetime

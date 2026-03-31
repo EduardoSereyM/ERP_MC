@@ -7,6 +7,7 @@ from typing import Literal
 
 
 UnidadMedida = Literal["m2", "ml", "unidad", "kg", "hora", "otro"]
+TipoProducto = Literal["PRODUCTO_FISICO", "SERVICIO_INSTALACION", "SERVICIO_TECNICO", "SERVICIO_OTRO"]
 
 
 class CategoriaResponse(BaseModel):
@@ -26,6 +27,7 @@ class ProductoBase(BaseModel):
     categoria_id: UUID | None = None
     precio_base: Decimal = Field(default=Decimal("0"), ge=0)
     unidad_medida: UnidadMedida = "m2"
+    tipo_producto: TipoProducto = "PRODUCTO_FISICO"
     requiere_instalacion: bool = False
 
 
@@ -39,6 +41,7 @@ class ProductoUpdate(BaseModel):
     categoria_id: UUID | None = None
     precio_base: Decimal | None = Field(None, ge=0)
     unidad_medida: UnidadMedida | None = None
+    tipo_producto: TipoProducto | None = None
     requiere_instalacion: bool | None = None
     activo: bool | None = None
 
@@ -69,6 +72,7 @@ class ProductoListItem(BaseModel):
     nombre: str
     precio_base: Decimal
     unidad_medida: str
+    tipo_producto: str
     requiere_instalacion: bool
     activo: bool
 

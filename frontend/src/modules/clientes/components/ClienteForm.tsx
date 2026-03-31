@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { Button, Input, PhoneInput, ChileLocationSelect } from '@/shared/components/ui'
 import type { ChileLocationValue } from '@/shared/components/ui'
 import { useCrearCliente, useActualizarCliente } from '../hooks/useClientes'
-import type { ClienteCreate, ClienteUpdate, ClienteListItem, Cliente } from '../types'
+import type { ClienteCreate, ClienteUpdate, ClienteListItem, Cliente, TipoCliente } from '../types'
+import { TIPO_CLIENTE_LABEL } from '../types'
 import { validarRut, normalizarRut, formatearRut, formatearRutInput } from '@/shared/utils/rut'
 import { usePermisos } from '@/core/hooks/usePermisos'
 
@@ -16,6 +17,7 @@ interface ClienteFormProps {
 interface FormState {
   razon_social: string
   rut: string
+  tipo_cliente: TipoCliente | ''
   email: string
   telefono: string
   direccion: string
@@ -46,6 +48,7 @@ const EMPTY_LOCATION: ChileLocationValue = { region: '', ciudad: '', comuna: '' 
 const EMPTY: FormState = {
   razon_social: '',
   rut: '',
+  tipo_cliente: '',
   email: '',
   telefono: '',
   direccion: '',
@@ -54,6 +57,8 @@ const EMPTY: FormState = {
   contacto_email: '',
   contacto_telefono: '',
 }
+
+const TIPOS: TipoCliente[] = ['residencial', 'empresa', 'constructor', 'inmobiliaria', 'contratista', 'distribuidor', 'vip']
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
@@ -79,6 +84,7 @@ export const ClienteForm = ({ initial, onSuccess, onCancel, onCreated }: Cliente
       setForm({
         razon_social: initial.razon_social,
         rut: formatearRut(initial.rut) ?? initial.rut,
+        tipo_cliente: initial.tipo_cliente ?? '',
         email: initial.email ?? '',
         telefono: initial.telefono ?? '',
         direccion: initial.direccion ?? '',
@@ -103,7 +109,7 @@ export const ClienteForm = ({ initial, onSuccess, onCancel, onCreated }: Cliente
   // ── Helpers ──────────────────────────────────────────────────────────────
   const touch = (key: keyof TouchedState) => setTouched(t => ({ ...t, [key]: true }))
 
-  const set = (key: keyof Omit<FormState, 'location'>) =>
+  const set = (key: keyof Omit<FormState, 'location' | 'tipo_cliente'>) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm(f => ({ ...f, [key]: e.target.value }))
 
@@ -177,6 +183,7 @@ export const ClienteForm = ({ initial, onSuccess, onCancel, onCreated }: Cliente
     if (!isValidPhone(form.contacto_telefono)) return
 
     const basePayload = {
+      tipo_cliente: (form.tipo_cliente as TipoCliente) || null,
       email: form.email,
       telefono: form.telefono,
       direccion: form.direccion,
@@ -230,6 +237,7 @@ export const ClienteForm = ({ initial, onSuccess, onCancel, onCreated }: Cliente
           error={errors.razon_social}
           success={success.razon_social}
         />
+
         {/* RUT — protegido en modo edición para usuarios sin jefatura */}
         {rutEditable ? (
           <Input
@@ -257,6 +265,42 @@ export const ClienteForm = ({ initial, onSuccess, onCancel, onCreated }: Cliente
             )}
           </div>
         )}
+
+        {/* Tipo de cliente */}
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-text-primary">
+            Tipo de cliente
+            {form.tipo_cliente === 'vip' && (
+              <span className="ml-2 inline-flex items-center gap-0.5 text-xs font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                ★ VIP
+              </span>
+            )}
+          </label>
+          <select
+            value={form.tipo_cliente}
+            onChange={e => setForm(f => ({ ...f, tipo_cliente: e.target.value as TipoCliente | '' }))}
+            className="rounded-lg border border-surface-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">Sin clasificar</option>
+            {TIPOS.map(t => (
+              <option key={t} value={t}>{TIPO_CLIENTE_LABEL[t]}</option>
+            ))}
+          </select>
+          {form.tipo_cliente && (
+            <p className="text-xs text-text-secondary">
+              {form.tipo_cliente === 'vip'
+                ? 'Cliente preferente — aplica descuento automático del 15% en cotizaciones'
+                : form.tipo_cliente === 'distribuidor'
+                ? 'Distribuidor — aplica descuento automático del 10% en cotizaciones'
+                : ['constructor', 'inmobiliaria'].includes(form.tipo_cliente)
+                ? 'Aplica descuento automático del 8% en cotizaciones'
+                : ['empresa', 'contratista'].includes(form.tipo_cliente)
+                ? 'Aplica descuento automático del 5% en cotizaciones'
+                : null}
+            </p>
+          )}
+        </div>
+
         <Input
           label="Email"
           type="email"

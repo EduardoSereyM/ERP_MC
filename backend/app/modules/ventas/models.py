@@ -10,7 +10,7 @@ from app.core.database import Base
 
 
 EstadoVenta = str  # CONSULTA_ABIERTA | COTIZACION_ENVIADA | VENTA_GENERADA | CERRADA | ANULADA
-EstadoCotizacion = str  # BORRADOR | ENVIADA | ACEPTADA | RECHAZADA | VENCIDA
+EstadoCotizacion = str  # BORRADOR | ENVIADA | ACEPTADA | RECHAZADA | VENCIDA | ANULADA
 TipoStub = str  # BOD | COB | CTB | GER | INS
 EstadoStub = str  # PENDIENTE | EN_REVISION | COMPLETADA | RECHAZADA
 
@@ -64,6 +64,8 @@ class Cotizacion(Base):
     descuento_motivo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     notas_internas: Mapped[str | None] = mapped_column(Text, nullable=True)
     notas_cliente: Mapped[str | None] = mapped_column(Text, nullable=True)
+    motivo_anulacion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fecha_anulacion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

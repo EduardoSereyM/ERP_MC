@@ -29,6 +29,7 @@ class Cliente(Base):
     contacto_email: Mapped[str | None] = mapped_column(String, nullable=True)
     contacto_telefono: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
+    tipo_cliente: Mapped[str | None] = mapped_column(String(50), nullable=True)
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 

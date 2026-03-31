@@ -1,6 +1,6 @@
 # SYSTEM_STATE.md — ERP MC
 
-> Última actualización: 2026-03-26
+> Última actualización: 2026-03-26 (sesión 2)
 > Fase actual: **1A — Ventas** (data layer + backend + frontend — app en funcionamiento con formularios y búsqueda)
 
 ---
@@ -11,7 +11,7 @@
 |------|-------|--------|
 | Frontend | Vite 5.4 + React 18.3 + TypeScript 5.5 | ✅ Corriendo (`localhost:5173`) |
 | Backend | FastAPI 0.115 + SQLAlchemy 2.0 (sync) + Python 3.12 | ✅ Corriendo (`localhost:8000`) |
-| Base de datos | PostgreSQL 17.6 vía Supabase | ✅ 10 migraciones aplicadas |
+| Base de datos | PostgreSQL 17.6 vía Supabase | ✅ 12 migraciones aplicadas |
 | Auth | Supabase Auth (email/password) + JWT ECC P-256 | ✅ Login verificado end-to-end |
 | State management | TanStack Query 5 (server) + Zustand 4.5 (UI) | ✅ Configurado |
 | API Client | Axios + interceptor JWT automático | ✅ Configurado |
@@ -90,6 +90,7 @@
 - Código correlativo generado vía `siguiente_codigo('producto')` → `PRD-000001`
 - Categorías configurables por módulo/tipo — tabla genérica `categorias_configurables`
 - Unidades de medida: `m2 | ml | unidad | kg | hora | otro`
+- **`tipo_producto`**: `PRODUCTO_FISICO | SERVICIO_INSTALACION | SERVICIO_TECNICO | SERVICIO_OTRO` — determina qué stubs se generan al confirmar venta
 - Flag `requiere_instalacion` — determina si genera SAC automático (Fase 1B)
 - Servicios asociados por producto (instalación, etc.)
 
@@ -106,6 +107,7 @@
 | `/api/v1/ventas/{id}/estado` | POST | 30/min | vendedor, admin, gerencia |
 | `/api/v1/ventas/{id}/cotizaciones` | GET | 60/min | Todos (RLS filtra) |
 | `/api/v1/ventas/{id}/cotizaciones` | POST | 30/min | vendedor, admin, gerencia |
+| `/api/v1/ventas/{id}/actividad` | GET | 60/min | Todos autenticados |
 | `/api/v1/ventas/cotizaciones/{id}/estado` | POST | 30/min | vendedor, admin, gerencia |
 | `/api/v1/ventas/cotizaciones/{id}/lineas` | POST | 60/min | vendedor, admin, gerencia |
 | `/api/v1/ventas/cotizaciones/{id}/lineas/{linea_id}` | PATCH | 60/min | vendedor, admin, gerencia |
@@ -128,12 +130,14 @@ BORRADOR → ENVIADA → ACEPTADA
                    → VENCIDA
 ```
 
-**Frontend:** hooks `useVentas`, `useVenta`, `useCrearVenta`, `useActualizarVenta`, `useCambiarEstadoVenta`, `useCotizaciones`, `useCrearCotizacion`, `useCambiarEstadoCotizacion`
+**Frontend:** hooks `useVentas`, `useVenta`, `useCrearVenta`, `useActualizarVenta`, `useCambiarEstadoVenta`, `useCotizaciones`, `useCrearCotizacion`, `useCambiarEstadoCotizacion`, `useStubsVenta`, `useActividadVenta`
 
 **Lógica de negocio:**
 - Código correlativo vía `siguiente_codigo('venta')` → `VTA-000001`
 - Transiciones validadas en backend — HTTP 422 si la transición no está permitida
 - `vendedor_id` se asigna automáticamente al usuario que crea la venta
+- Campo `tipo`: `suministro | suministro_instalacion | solo_instalacion`
+- `fecha_cierre`: poblada automáticamente al transicionar a CERRADA
 - Cotizaciones vinculadas a una venta (cascade delete)
 - Líneas de cotización con cálculo automático de subtotal: `cantidad × precio × (1 - descuento/100)`
 - Totales de cotización recalculados: subtotal, IVA 19%, total
@@ -146,11 +150,13 @@ BORRADOR → ENVIADA → ACEPTADA
 - **Auto-transición al enviar**: enviar email/PDF en BORRADOR → auto-marca cotización ENVIADA + venta COTIZACION_ENVIADA
 - **VENCIDA** se gestiona automáticamente por fecha — no se expone como botón manual en UI
 - **Cotización ENVIADA es inmutable** — solo BORRADOR permite editar/agregar líneas
-
-**Decisiones de diseño pendientes:**
-- ¿Se permiten múltiples cotizaciones activas simultáneas?
-- ¿Monto total muestra solo aceptadas o todas activas?
-- ¿Se permite más de una cotización aceptada por venta?
+- **Solo una cotización ACEPTADA por venta** — backend rechaza con HTTP 422 si ya hay una aceptada
+- **Guard en VENTA_GENERADA** — requiere cotización ACEPTADA; rechaza HTTP 422 si no existe
+- **Auto-stubs al confirmar venta** (`_crear_stubs_confirmacion`):
+  - BOD (despacho) solo si hay líneas con `tipo_producto == PRODUCTO_FISICO`
+  - COB (cobranza) siempre — `fecha_limite = hoy + 7 días`
+- **Timeline de actividad** (`/actividad`): eventos de audit_log de la venta + cotizaciones + stubs, con nombre de usuario resuelto
+- **Múltiples cotizaciones activas permitidas** — `puedeCrearCot` no bloquea si hay una aceptada
 
 ---
 
@@ -219,6 +225,8 @@ PENDIENTE → EN_REVISION → COMPLETADA
 | `cotizaciones` | 0008 | ventas |
 | `lineas_cotizacion` | 0008 | ventas |
 | `solicitudes_stub` | 0009 | ventas (transversal) |
+| `productos.tipo_producto` | 0011 | productos (nueva columna) |
+| `ventas.tipo`, `ventas.fecha_cierre` | 0012 | ventas (nuevas columnas) |
 
 ### 3.2 Funciones SQL
 
@@ -307,10 +315,10 @@ PENDIENTE → EN_REVISION → COMPLETADA
 |--------|------------------------------|------------------|-------|
 | auth | ✅ `useMe`, `useSession` | ✅ LoginView, LoginForm, ProtectedRoute | `/login` |
 | clientes | ✅ | ✅ ClientesListView, ClienteForm (crear/editar + validación RUT) | `/clientes` |
-| productos | ✅ | ✅ ProductosListView, ProductoForm (crear/editar) | `/productos` |
-| ventas | ✅ | ✅ VentasListView (búsqueda), VentaForm (modal + nuevo cliente), VentaDetailView (cotizaciones + líneas + PDF + transiciones) | `/ventas`, `/ventas/:id` |
+| productos | ✅ | ✅ ProductosListView, ProductoForm (crear/editar + selector `tipo_producto`) | `/productos` |
+| ventas | ✅ | ✅ VentasListView (búsqueda), VentaForm (modal + nuevo cliente), VentaDetailView (cotizaciones + líneas + PDF + transiciones + actividad timeline + stubs panel) | `/ventas`, `/ventas/:id` |
 | stubs | ✅ | ✅ StubsListView (filtro por tipo, paginación) | `/stubs` |
-| dashboard | ✅ `useDashboardSummary` | ✅ DashboardView con KPIs reales | `/dashboard` |
+| dashboard | ✅ `useDashboardSummary` | ✅ DashboardView con KPIs reales + gráficos + stub data | `/dashboard` |
 | logs | ✅ `useLogs` | ✅ AuditLogsView (paginada, filtros) | `/admin/audit-logs` |
 
 **Layout:** `AppLayout` con sidebar colapsable (navy), navegación principal, sección de usuario y botón cerrar sesión. Rutas protegidas con `ProtectedRoute` (en `modules/auth/components/`).
@@ -359,11 +367,9 @@ PENDIENTE → EN_REVISION → COMPLETADA
 
 | Item | Fase |
 |------|------|
-| Política múltiples cotizaciones activas + monto total separado aceptadas/activas | 1A |
 | Auto-vencimiento cotizaciones por `fecha_vencimiento` (job o check on-read) | 1A |
-| Confirmar venta solo con cotización aceptada (guard en transición) | 1A |
 | Notificaciones de VTA + Stubs | 1A |
-| Backlog/historial lateral de VTA | 1A |
+| Conectar `fecha_cierre` (poblar al transicionar a CERRADA en backend) | 1A |
 | SAC / Instalaciones | 1B |
 | Servicios Técnicos | 1C |
 | Postventa | 1D |

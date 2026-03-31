@@ -1,4 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
+import icono from '@/assets/icono.png'
 import { useSession } from '@/modules/auth/hooks/useSession'
 import { useAuth } from '@/modules/auth/hooks/useAuth'
 import { usePermisos } from '@/core/hooks/usePermisos'
@@ -87,11 +88,9 @@ export const AppLayout = () => {
         {/* Logo */}
         <div className="p-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
-              <Icon name="dataset" filled className="text-white text-xl" />
-            </div>
+            <img src={icono} alt="Logo" className="w-10 h-10 flex-shrink-0" />
             <div>
-              <h1 className="text-xl font-bold text-white tracking-tight leading-none">MC ERP</h1>
+              <h1 className="text-xl font-bold text-white tracking-tight leading-none">ESM ERP</h1>
               <p className="text-xs text-slate-400 font-medium mt-0.5">Enterprise Resource</p>
             </div>
           </div>

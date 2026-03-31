@@ -1,14 +1,26 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.shared.rut import validar_rut_o_error
 
+TipoCliente = Literal[
+    "residencial",
+    "empresa",
+    "constructor",
+    "inmobiliaria",
+    "contratista",
+    "distribuidor",
+    "vip",
+]
+
 
 class ClienteBase(BaseModel):
     razon_social: str = Field(..., min_length=2, max_length=300)
     rut: str = Field(..., min_length=3, max_length=20)
+    tipo_cliente: TipoCliente | None = None
     email: str | None = None
     telefono: str | None = None
     direccion: str | None = None
@@ -32,6 +44,7 @@ class ClienteCreate(ClienteBase):
 
 class ClienteUpdate(BaseModel):
     razon_social: str | None = Field(None, min_length=2, max_length=300)
+    tipo_cliente: TipoCliente | None = None
     email: str | None = None
     telefono: str | None = None
     direccion: str | None = None
@@ -60,6 +73,7 @@ class ClienteListItem(BaseModel):
     codigo: str
     razon_social: str
     rut: str
+    tipo_cliente: TipoCliente | None
     email: str | None
     telefono: str | None
     direccion: str | None

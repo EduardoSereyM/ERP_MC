@@ -39,6 +39,7 @@ class Producto(Base):
     categoria_id: Mapped[UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
     precio_base: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
     unidad_medida: Mapped[str] = mapped_column(String(20), nullable=False, default="m2")
+    tipo_producto: Mapped[str] = mapped_column(String(30), nullable=False, default="PRODUCTO_FISICO")
     requiere_instalacion: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
